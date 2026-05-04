@@ -27,12 +27,12 @@ bool lockdockd_copy_display_label(CGDirectDisplayID display_id,
         return false;
     }
 
-    if (lockdockd_copy_display_name(display_id, buffer, buffer_size)) {
+    if (CGDisplayIsBuiltin(display_id)) {
+        snprintf(buffer, buffer_size, "Built-in Display");
         return true;
     }
 
-    if (CGDisplayIsBuiltin(display_id)) {
-        snprintf(buffer, buffer_size, "Built-in Display");
+    if (lockdockd_copy_display_name(display_id, buffer, buffer_size)) {
         return true;
     }
 
