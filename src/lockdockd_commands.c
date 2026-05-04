@@ -170,19 +170,23 @@ static CGEventRef lockdockd_locker_event_callback(CGEventTapProxy proxy,
 int lockdockd_cmd_list(void) {
     CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
     uint32_t count = 0;
-    CGDirectDisplayID main_display_id = CGMainDisplayID();
+    CGDirectDisplayID dock_display_id = lockdockd_get_dock_display();
 
     CGGetActiveDisplayList(LOCKDOCKD_MAX_DISPLAYS, displays, &count);
 
     for (uint32_t i = 0; i < count; i++) {
-        CGRect bounds = CGDisplayBounds(displays[i]);
-
-        printf("[%u] id=%u ", i, displays[i]);
+        printf("[%u] ", i);
         lockdockd_print_display_name(displays[i]);
-        printf(" %.0fx%.0f@(%.0f,%.0f)%s%s\n", bounds.size.width, bounds.size.height,
-               bounds.origin.x, bounds.origin.y,
-               CGDisplayIsBuiltin(displays[i]) ? " builtin" : "",
-               displays[i] == main_display_id ? " primary" : "");
+        printf("%s\n", displays[i] == dock_display_id ? "*" : "");
+    }
+
+    if (dock_display_id == 0) {
+        printf("Dock display: unknown");
+        if (!lockdockd_is_accessibility_trusted()) {
+            printf(" (Accessibility permission is not granted)\n");
+        } else {
+            printf("\n");
+        }
     }
 
     return 0;
@@ -369,33 +373,9 @@ int lockdockd_cmd_lock(const char *display_arg) {
     return 0;
 }
 
-int lockdockd_cmd_status(void) {
-    CGDirectDisplayID dock_display = lockdockd_get_dock_display();
-    CGRect bounds;
-
-    if (dock_display == 0) {
-        printf("Could not determine current Dock display");
-        if (!lockdockd_is_accessibility_trusted()) {
-            printf(" (Accessibility permission is not granted)\n");
-        } else {
-            printf("\n");
-        }
-        return 1;
-    }
-
-    bounds = CGDisplayBounds(dock_display);
-    printf("Dock is on display %u ", dock_display);
-    lockdockd_print_display_name(dock_display);
-    printf(" (%.0fx%.0f@%.0f,%.0f)\n", bounds.size.width, bounds.size.height,
-           bounds.origin.x, bounds.origin.y);
-    return 0;
-}
-
 void lockdockd_print_usage(const char *prog) {
     printf("Usage:\n");
     printf("  %s list                     List all displays\n", prog);
-    printf("  %s status                   Show which display the Dock is on\n",
-           prog);
     printf(
         "  %s relocate <display-id>    Move Dock to a display (via safe edge "
         "zone)\n",

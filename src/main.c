@@ -21,10 +21,6 @@ int main(int argc, char **argv) {
         return lockdockd_cmd_list();
     }
 
-    if (strcmp(command, "status") == 0) {
-        return lockdockd_cmd_status();
-    }
-
     if (strcmp(command, "relocate") == 0) {
         if (argc < 3) {
             fprintf(stderr, "Usage: %s relocate <display-id>\n", argv[0]);
