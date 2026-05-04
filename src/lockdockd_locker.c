@@ -14,6 +14,12 @@ static double g_lock_edge_zone = 4.0;
 static CFMachPortRef g_event_tap = NULL;
 static CFRunLoopSourceRef g_event_source = NULL;
 
+static void lockdockd_locker_enable_tap(void) {
+    if (g_event_tap != NULL) {
+        CGEventTapEnable(g_event_tap, true);
+    }
+}
+
 static CGFloat lockdockd_distance_from_dock_edge(
     CGPoint point,
     CGRect bounds,
@@ -41,6 +47,12 @@ static CGEventRef lockdockd_locker_event_callback(CGEventTapProxy proxy,
 
     (void)proxy;
     (void)user_info;
+
+    if (type == kCGEventTapDisabledByTimeout ||
+        type == kCGEventTapDisabledByUserInput) {
+        lockdockd_locker_enable_tap();
+        return event;
+    }
 
     if (type != kCGEventMouseMoved && type != kCGEventLeftMouseDragged &&
         type != kCGEventRightMouseDragged && type != kCGEventOtherMouseDragged) {
@@ -100,7 +112,12 @@ static bool lockdockd_locker_ensure_tap(char *error, size_t error_size) {
     CGEventMask mask;
 
     if (g_event_tap != NULL && g_event_source != NULL) {
+        lockdockd_locker_enable_tap();
         return true;
+    }
+
+    if (g_event_tap != NULL || g_event_source != NULL) {
+        lockdockd_locker_release_tap();
     }
 
     mask = CGEventMaskBit(kCGEventMouseMoved) |
@@ -127,7 +144,7 @@ static bool lockdockd_locker_ensure_tap(char *error, size_t error_size) {
     }
 
     CFRunLoopAddSource(CFRunLoopGetCurrent(), g_event_source, kCFRunLoopCommonModes);
-    CGEventTapEnable(g_event_tap, true);
+    lockdockd_locker_enable_tap();
     return true;
 }
 
