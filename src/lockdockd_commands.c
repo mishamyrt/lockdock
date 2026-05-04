@@ -6,7 +6,6 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
-#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -63,6 +62,10 @@ static void lockdockd_post_move_event(CGEventSourceRef source, CGPoint point) {
 
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
+}
+
+static bool lockdockd_set_cursor_association(bool associated) {
+    return CGAssociateMouseAndMouseCursorPosition(associated) == kCGErrorSuccess;
 }
 
 static void lockdockd_post_edge_nudge(CGEventSourceRef source,
@@ -190,6 +193,7 @@ int lockdockd_cmd_relocate(const char *display_arg) {
     CGRect bounds;
     LockDockdDockOrientation orientation;
     CGPoint old_position;
+    bool cursor_locked = false;
     CGEventSourceRef source;
     LockDockdSafeSegment safe_segment;
     CGPoint approach = CGPointZero;
@@ -220,6 +224,13 @@ int lockdockd_cmd_relocate(const char *display_arg) {
     source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
     if (source != NULL) {
         CGEventSourceSetLocalEventsSuppressionInterval(source, 0.0);
+    }
+
+    cursor_locked = lockdockd_set_cursor_association(false);
+    if (!cursor_locked) {
+        fprintf(stderr,
+                "Warning: failed to temporarily lock cursor movement during "
+                "relocation\n");
     }
 
     safe_segment = lockdockd_find_safe_edge_segment(display_id, orientation);
@@ -269,6 +280,9 @@ int lockdockd_cmd_relocate(const char *display_arg) {
     }
 
     CGWarpMouseCursorPosition(old_position);
+    if (cursor_locked) {
+        lockdockd_set_cursor_association(true);
+    }
 
     {
         CGDirectDisplayID new_display = lockdockd_get_dock_display();

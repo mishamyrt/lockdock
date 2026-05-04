@@ -8,6 +8,10 @@
 
 #define LOCKDOCKD_MAX_DISPLAYS 32
 
+static bool g_cursor_hide_used_core_graphics = false;
+static bool g_cursor_hide_used_appkit = false;
+static bool g_cursor_hide_activated_self = false;
+
 static bool lockdockd_copy_nsstring(NSString *string,
                                     char *buffer,
                                     size_t buffer_size) {
