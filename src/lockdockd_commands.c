@@ -18,8 +18,7 @@ static CGDirectDisplayID g_locked_display = 0;
 static volatile int g_locker_running = 1;
 static double g_lock_edge_zone = 4.0;
 
-static const char *lockdockd_orientation_name(
-    LockDockdDockOrientation orientation) {
+static const char *lockdockd_orientation_name(LockDockdDockOrientation orientation) {
     static const char *const names[] = {"bottom", "left", "right"};
 
     return names[orientation];
@@ -66,6 +65,50 @@ static void lockdockd_post_move_event(CGEventSourceRef source, CGPoint point) {
     CFRelease(event);
 }
 
+static void lockdockd_post_edge_nudge(CGEventSourceRef source,
+                                      CGPoint point,
+                                      LockDockdDockOrientation orientation) {
+    CGEventRef event = CGEventCreateMouseEvent(source, kCGEventMouseMoved, point,
+                                               kCGMouseButtonLeft);
+
+    if (event == NULL) {
+        return;
+    }
+
+    if (orientation == LOCKDOCKD_ORIENT_BOTTOM) {
+        CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, 1);
+    } else if (orientation == LOCKDOCKD_ORIENT_LEFT) {
+        CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, -1);
+    } else if (orientation == LOCKDOCKD_ORIENT_RIGHT) {
+        CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, 1);
+    }
+
+    CGEventPost(kCGHIDEventTap, event);
+    CFRelease(event);
+}
+
+static void lockdockd_wait_for_dock_relocation(CGEventSourceRef source,
+                                               CGPoint edge,
+                                               LockDockdDockOrientation orientation,
+                                               CGDirectDisplayID display_id) {
+    for (int i = 0; i < 60; i++) {
+        lockdockd_post_edge_nudge(source, edge, orientation);
+        usleep(15 * 1000);
+
+        if (((i + 1) % 3) == 0 && lockdockd_get_dock_display() == display_id) {
+            return;
+        }
+    }
+
+    for (int i = 0; i < 8; i++) {
+        if (lockdockd_get_dock_display() == display_id) {
+            return;
+        }
+
+        usleep(10 * 1000);
+    }
+}
+
 static void lockdockd_smooth_move(CGEventSourceRef source,
                                   CGPoint from,
                                   CGPoint to,
@@ -73,8 +116,8 @@ static void lockdockd_smooth_move(CGEventSourceRef source,
                                   useconds_t delay_us) {
     for (int step = 1; step <= steps; step++) {
         CGFloat t = (CGFloat)step / (CGFloat)steps;
-        CGPoint point = CGPointMake(from.x + (to.x - from.x) * t,
-                                    from.y + (to.y - from.y) * t);
+        CGPoint point =
+            CGPointMake(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
 
         CGWarpMouseCursorPosition(point);
         lockdockd_post_move_event(source, point);
@@ -101,8 +144,7 @@ static CGEventRef lockdockd_locker_event_callback(CGEventTapProxy proxy,
     (void)user_info;
 
     if (type != kCGEventMouseMoved && type != kCGEventLeftMouseDragged &&
-        type != kCGEventRightMouseDragged &&
-        type != kCGEventOtherMouseDragged) {
+        type != kCGEventRightMouseDragged && type != kCGEventOtherMouseDragged) {
         return event;
     }
 
@@ -134,8 +176,8 @@ int lockdockd_cmd_list(void) {
 
         printf("[%u] id=%u ", i, displays[i]);
         lockdockd_print_display_name(displays[i]);
-        printf(" %.0fx%.0f@(%.0f,%.0f)%s%s\n", bounds.size.width,
-               bounds.size.height, bounds.origin.x, bounds.origin.y,
+        printf(" %.0fx%.0f@(%.0f,%.0f)%s%s\n", bounds.size.width, bounds.size.height,
+               bounds.origin.x, bounds.origin.y,
                CGDisplayIsBuiltin(displays[i]) ? " builtin" : "",
                displays[i] == main_display_id ? " primary" : "");
     }
@@ -192,12 +234,6 @@ int lockdockd_cmd_relocate(const char *display_arg) {
 
             approach = CGPointMake(trigger_x, edge_y - 50.0);
             edge = CGPointMake(trigger_x, edge_y - 1.0);
-
-            if (fabs(old_position.x - trigger_x) > 50.0) {
-                CGPoint horizontal_target = CGPointMake(trigger_x, old_position.y);
-                lockdockd_smooth_move(source, old_position, horizontal_target, 8,
-                                      12 * 1000);
-            }
             break;
         }
 
@@ -207,12 +243,6 @@ int lockdockd_cmd_relocate(const char *display_arg) {
 
             approach = CGPointMake(edge_x + 50.0, trigger_y);
             edge = CGPointMake(edge_x + 1.0, trigger_y);
-
-            if (fabs(old_position.y - trigger_y) > 50.0) {
-                CGPoint vertical_target = CGPointMake(old_position.x, trigger_y);
-                lockdockd_smooth_move(source, old_position, vertical_target, 8,
-                                      12 * 1000);
-            }
             break;
         }
 
@@ -222,12 +252,6 @@ int lockdockd_cmd_relocate(const char *display_arg) {
 
             approach = CGPointMake(edge_x - 50.0, trigger_y);
             edge = CGPointMake(edge_x - 1.0, trigger_y);
-
-            if (fabs(old_position.y - trigger_y) > 50.0) {
-                CGPoint vertical_target = CGPointMake(old_position.x, trigger_y);
-                lockdockd_smooth_move(source, old_position, vertical_target, 8,
-                                      12 * 1000);
-            }
             break;
         }
     }
@@ -238,27 +262,7 @@ int lockdockd_cmd_relocate(const char *display_arg) {
 
     lockdockd_smooth_move(source, approach, edge, 10, 15 * 1000);
 
-    for (int i = 0; i < 60; i++) {
-        CGEventRef event = CGEventCreateMouseEvent(source, kCGEventMouseMoved, edge,
-                                                   kCGMouseButtonLeft);
-
-        if (event != NULL) {
-            if (orientation == LOCKDOCKD_ORIENT_BOTTOM) {
-                CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, 1);
-            } else if (orientation == LOCKDOCKD_ORIENT_LEFT) {
-                CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, -1);
-            } else if (orientation == LOCKDOCKD_ORIENT_RIGHT) {
-                CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, 1);
-            }
-
-            CGEventPost(kCGHIDEventTap, event);
-            CFRelease(event);
-        }
-
-        usleep(15 * 1000);
-    }
-
-    usleep(400 * 1000);
+    lockdockd_wait_for_dock_relocation(source, edge, orientation, display_id);
 
     if (source != NULL) {
         CFRelease(source);
@@ -272,10 +276,14 @@ int lockdockd_cmd_relocate(const char *display_arg) {
         if (new_display == display_id) {
             printf("Dock successfully moved to display %u\n", display_id);
         } else if (new_display != 0) {
-            printf("Dock is on display %u (expected %u)\n", new_display,
-                   display_id);
+            printf("Dock is on display %u (expected %u)\n", new_display, display_id);
         } else {
-            printf("Could not determine current Dock display\n");
+            printf("Could not determine current Dock display");
+            if (!lockdockd_is_accessibility_trusted()) {
+                printf(" (Accessibility permission is not granted)\n");
+            } else {
+                printf("\n");
+            }
         }
     }
 
@@ -352,7 +360,12 @@ int lockdockd_cmd_status(void) {
     CGRect bounds;
 
     if (dock_display == 0) {
-        printf("Could not determine current Dock display\n");
+        printf("Could not determine current Dock display");
+        if (!lockdockd_is_accessibility_trusted()) {
+            printf(" (Accessibility permission is not granted)\n");
+        } else {
+            printf("\n");
+        }
         return 1;
     }
 
@@ -369,9 +382,10 @@ void lockdockd_print_usage(const char *prog) {
     printf("  %s list                     List all displays\n", prog);
     printf("  %s status                   Show which display the Dock is on\n",
            prog);
-    printf("  %s relocate <display-id>    Move Dock to a display (via safe edge "
-           "zone)\n",
-           prog);
+    printf(
+        "  %s relocate <display-id>    Move Dock to a display (via safe edge "
+        "zone)\n",
+        prog);
     printf("  %s lock <display-id>        Lock Dock to a display (block edge\n",
            prog);
     printf("                              pressure on other displays)\n");

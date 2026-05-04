@@ -17,9 +17,8 @@ typedef enum {
 } LockDockdDockOrientation;
 
 CGDirectDisplayID lockdockd_resolve_display_arg(const char *arg);
-LockDockdSafeSegment lockdockd_find_safe_edge_segment(
-    CGDirectDisplayID target_id,
-    LockDockdDockOrientation edge);
+LockDockdSafeSegment lockdockd_find_safe_edge_segment(CGDirectDisplayID target_id,
+                                                      LockDockdDockOrientation edge);
 CGDirectDisplayID lockdockd_find_display_at_point(CGPoint point);
 
 #endif
