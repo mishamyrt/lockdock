@@ -32,12 +32,6 @@
 *
 *    Placed in the public domain and also MIT licensed.
 *    See end of file for detailed license information.
-*
-*  EXAMPLE
-*
-*    You can find examples how to parser a sample json file that contains a person data using C and C++ (C++11).
-*
-*      main.cpp
 */
 
 #ifndef __JSON_TOKENIZER_H__
