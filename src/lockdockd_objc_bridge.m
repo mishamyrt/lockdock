@@ -4,6 +4,7 @@
 #include <AppKit/AppKit.h>
 #include <Foundation/Foundation.h>
 #include <IOKit/graphics/IOGraphicsLib.h>
+#include <limits.h>
 #include <stdio.h>
 
 #define LOCKDOCKD_MAX_DISPLAYS 32
@@ -229,7 +230,8 @@ static bool lockdockd_copy_dock_window_bounds(CGRect *bounds_out) {
             CGWindowListCopyWindowInfo(options[option_index], kCGNullWindowID);
         NSArray *windows;
         CGRect best_bounds = CGRectZero;
-        CGFloat best_score = 0;
+        CGFloat best_area = 0;
+        int best_layer = INT_MIN;
 
         if (windows_ref == NULL) {
             continue;
@@ -240,11 +242,19 @@ static bool lockdockd_copy_dock_window_bounds(CGRect *bounds_out) {
         for (NSDictionary *window in windows) {
             NSString *owner = window[(NSString *)kCGWindowOwnerName];
             NSDictionary *window_bounds = window[(NSString *)kCGWindowBounds];
+            NSString *name = window[(NSString *)kCGWindowName];
+            NSNumber *layer_number = window[(NSString *)kCGWindowLayer];
             CGRect bounds = CGRectZero;
-            CGFloat score;
+            CGFloat area;
+            int layer = INT_MIN;
 
             if (![owner isKindOfClass:[NSString class]] ||
                 ![owner isEqualToString:@"Dock"]) {
+                continue;
+            }
+
+            if ([name isKindOfClass:[NSString class]] &&
+                [name hasPrefix:@"Wallpaper-"]) {
                 continue;
             }
 
@@ -255,14 +265,19 @@ static bool lockdockd_copy_dock_window_bounds(CGRect *bounds_out) {
                 continue;
             }
 
-            score = bounds.size.width * bounds.size.height;
-            if (score > best_score) {
-                best_score = score;
+            if ([layer_number isKindOfClass:[NSNumber class]]) {
+                layer = layer_number.intValue;
+            }
+
+            area = bounds.size.width * bounds.size.height;
+            if (layer > best_layer || (layer == best_layer && area > best_area)) {
+                best_layer = layer;
+                best_area = area;
                 best_bounds = bounds;
             }
         }
 
-        if (best_score > 0) {
+        if (!CGRectIsEmpty(best_bounds) && !CGRectIsNull(best_bounds)) {
             *bounds_out = best_bounds;
             return true;
         }
@@ -271,19 +286,51 @@ static bool lockdockd_copy_dock_window_bounds(CGRect *bounds_out) {
     return false;
 }
 
-static CGDirectDisplayID lockdockd_get_dock_display_via_accessibility(void) {
-    NSRunningApplication *dock_app = lockdockd_find_dock_app();
-    AXUIElementRef dock_element;
-    CFArrayRef windows = NULL;
-    AXUIElementRef window;
+static bool lockdockd_copy_ax_element_bounds(AXUIElementRef element,
+                                             CGRect *bounds_out) {
     CGPoint position = CGPointZero;
     CGSize size = CGSizeZero;
-    CGRect bounds;
     CFTypeRef position_value = NULL;
     CFTypeRef size_value = NULL;
     AXError error;
     bool has_position = false;
     bool has_size = false;
+
+    if (element == NULL || bounds_out == NULL) {
+        return false;
+    }
+
+    error =
+        AXUIElementCopyAttributeValue(element, kAXPositionAttribute, &position_value);
+    if (error == kAXErrorSuccess && position_value != NULL) {
+        has_position = AXValueGetValue((AXValueRef)position_value,
+                                       kAXValueCGPointType, &position);
+        CFRelease(position_value);
+    }
+
+    error = AXUIElementCopyAttributeValue(element, kAXSizeAttribute, &size_value);
+    if (error == kAXErrorSuccess && size_value != NULL) {
+        has_size =
+            AXValueGetValue((AXValueRef)size_value, kAXValueCGSizeType, &size);
+        CFRelease(size_value);
+    }
+
+    if (!has_position) {
+        return false;
+    }
+
+    *bounds_out = CGRectMake(position.x, position.y, has_size ? size.width : 1.0,
+                             has_size ? size.height : 1.0);
+    return true;
+}
+
+static CGDirectDisplayID lockdockd_get_dock_display_via_accessibility(void) {
+    NSRunningApplication *dock_app = lockdockd_find_dock_app();
+    AXUIElementRef dock_element;
+    CFArrayRef windows = NULL;
+    CGRect best_bounds = CGRectZero;
+    CGFloat best_area = 0;
+    AXError error;
 
     if (!lockdockd_is_accessibility_trusted() || dock_app == nil) {
         return 0;
@@ -307,32 +354,31 @@ static CGDirectDisplayID lockdockd_get_dock_display_via_accessibility(void) {
         return 0;
     }
 
-    window = (AXUIElementRef)CFArrayGetValueAtIndex(windows, 0);
-    error =
-        AXUIElementCopyAttributeValue(window, kAXPositionAttribute, &position_value);
-    if (error == kAXErrorSuccess && position_value != NULL) {
-        has_position = AXValueGetValue((AXValueRef)position_value,
-                                       kAXValueCGPointType, &position);
-        CFRelease(position_value);
-    }
+    for (CFIndex i = 0; i < CFArrayGetCount(windows); i++) {
+        AXUIElementRef window = (AXUIElementRef)CFArrayGetValueAtIndex(windows, i);
+        CGRect bounds = CGRectZero;
+        CGFloat area;
 
-    error = AXUIElementCopyAttributeValue(window, kAXSizeAttribute, &size_value);
-    if (error == kAXErrorSuccess && size_value != NULL) {
-        has_size =
-            AXValueGetValue((AXValueRef)size_value, kAXValueCGSizeType, &size);
-        CFRelease(size_value);
+        if (!lockdockd_copy_ax_element_bounds(window, &bounds)) {
+            continue;
+        }
+
+        area = bounds.size.width * bounds.size.height;
+
+        if (area > best_area) {
+            best_area = area;
+            best_bounds = bounds;
+        }
     }
 
     CFRelease(windows);
     CFRelease(dock_element);
 
-    if (!has_position) {
-        return 0;
+    if (!CGRectIsEmpty(best_bounds) && !CGRectIsNull(best_bounds)) {
+        return lockdockd_display_for_rect(best_bounds);
     }
 
-    bounds = CGRectMake(position.x, position.y, has_size ? size.width : 1.0,
-                        has_size ? size.height : 1.0);
-    return lockdockd_display_for_rect(bounds);
+    return 0;
 }
 
 LockDockdDockOrientation lockdockd_get_dock_orientation(void) {
