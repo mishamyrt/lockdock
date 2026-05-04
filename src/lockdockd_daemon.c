@@ -39,6 +39,14 @@ typedef struct {
     int target;
 } LockDockdRequest;
 
+typedef struct {
+    CGDirectDisplayID dock_display;
+    CGDirectDisplayID locked_display;
+    bool has_dock_display;
+    bool has_preferred_display;
+    LockDockdDisplayIdentity preferred_identity;
+} LockDockdStateSnapshot;
+
 static void lockdockd_signal_handler(int signal_number) {
     if (signal_number == SIGINT || signal_number == SIGTERM) {
         g_daemon_running = 0;
@@ -612,6 +620,253 @@ static bool lockdockd_reconcile_display_state(char *error, size_t error_size) {
     return lockdockd_locker_set_target(preferred_display, error, error_size);
 }
 
+static bool lockdockd_capture_state_snapshot(LockDockdStateSnapshot *snapshot,
+                                             const LockDockdStatus *status,
+                                             bool capture_dock_display,
+                                             char *error,
+                                             size_t error_size) {
+    LockDockdStatus current_status;
+
+    if (snapshot == NULL) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->locked_display = lockdockd_locker_get_target();
+    snapshot->has_preferred_display =
+        lockdockd_preferences_load_preferred_display(&snapshot->preferred_identity);
+
+    if (!capture_dock_display) {
+        return true;
+    }
+
+    if (status == NULL) {
+        if (!lockdockd_query_status(&current_status, error, error_size)) {
+            return false;
+        }
+
+        status = &current_status;
+    }
+
+    if (status->location_index < 0 ||
+        status->location_index >= (int)status->display_count) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    snapshot->dock_display = status->displays[status->location_index];
+    snapshot->has_dock_display = true;
+    return true;
+}
+
+static bool lockdockd_restore_preferred_display(
+    const LockDockdStateSnapshot *snapshot,
+    char *error,
+    size_t error_size) {
+    if (snapshot == NULL) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    if (!snapshot->has_preferred_display) {
+        return lockdockd_preferences_clear_preferred_display(error, error_size);
+    }
+
+    return lockdockd_preferences_save_preferred_display(
+        &snapshot->preferred_identity, error, error_size);
+}
+
+static bool lockdockd_restore_runtime_state(const LockDockdStateSnapshot *snapshot,
+                                            bool restore_dock_display,
+                                            char *error,
+                                            size_t error_size) {
+    char dock_error[LOCKDOCKD_ERROR_BUFFER_SIZE] = "";
+    char lock_error[LOCKDOCKD_ERROR_BUFFER_SIZE] = "";
+    bool dock_restored = true;
+    bool lock_restored = true;
+
+    if (snapshot == NULL) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    lockdockd_locker_clear_target();
+
+    if (restore_dock_display) {
+        if (!snapshot->has_dock_display) {
+            lockdockd_set_error(dock_error, sizeof(dock_error), "Internal error");
+            dock_restored = false;
+        } else if (!lockdockd_relocate_display(snapshot->dock_display, dock_error,
+                                               sizeof(dock_error))) {
+            dock_restored = false;
+        }
+    }
+
+    if (snapshot->locked_display != 0 &&
+        !lockdockd_locker_set_target(snapshot->locked_display, lock_error,
+                                     sizeof(lock_error))) {
+        lock_restored = false;
+    }
+
+    if (dock_restored && lock_restored) {
+        return true;
+    }
+
+    if (!dock_restored && !lock_restored) {
+        snprintf(error, error_size, "%s; %s", dock_error, lock_error);
+    } else if (!dock_restored) {
+        lockdockd_set_error(error, error_size, dock_error);
+    } else {
+        lockdockd_set_error(error, error_size, lock_error);
+    }
+
+    return false;
+}
+
+static void lockdockd_set_rollback_error(char *error,
+                                         size_t error_size,
+                                         const char *operation_error,
+                                         const char *preference_rollback_error,
+                                         const char *runtime_rollback_error) {
+    bool has_preference_rollback_error =
+        preference_rollback_error != NULL && preference_rollback_error[0] != '\0';
+    bool has_runtime_rollback_error =
+        runtime_rollback_error != NULL && runtime_rollback_error[0] != '\0';
+
+    if (!has_preference_rollback_error && !has_runtime_rollback_error) {
+        lockdockd_set_error(error, error_size, operation_error);
+        return;
+    }
+
+    if (has_preference_rollback_error && has_runtime_rollback_error) {
+        snprintf(error, error_size,
+                 "%s (rollback failed: preferences: %s; runtime: %s)",
+                 operation_error, preference_rollback_error,
+                 runtime_rollback_error);
+        return;
+    }
+
+    if (has_preference_rollback_error) {
+        snprintf(error, error_size, "%s (rollback failed: preferences: %s)",
+                 operation_error, preference_rollback_error);
+        return;
+    }
+
+    snprintf(error, error_size, "%s (rollback failed: runtime: %s)",
+             operation_error, runtime_rollback_error);
+}
+
+static bool lockdockd_apply_unlock(char *error, size_t error_size) {
+    LockDockdStateSnapshot previous_state;
+    char operation_error[LOCKDOCKD_ERROR_BUFFER_SIZE];
+    char preference_rollback_error[LOCKDOCKD_ERROR_BUFFER_SIZE] = "";
+
+    if (!lockdockd_capture_state_snapshot(&previous_state, NULL, false, error,
+                                          error_size)) {
+        return false;
+    }
+
+    if (!lockdockd_preferences_clear_preferred_display(operation_error,
+                                                       sizeof(operation_error))) {
+        if (!lockdockd_restore_preferred_display(&previous_state,
+                                                 preference_rollback_error,
+                                                 sizeof(preference_rollback_error))) {
+            lockdockd_set_rollback_error(error, error_size, operation_error,
+                                         preference_rollback_error, NULL);
+        } else {
+            lockdockd_set_error(error, error_size, operation_error);
+        }
+
+        return false;
+    }
+
+    lockdockd_locker_clear_target();
+    return true;
+}
+
+static bool lockdockd_apply_set_state(
+    const LockDockdStatus *status,
+    CGDirectDisplayID display_id,
+    const LockDockdDisplayIdentity *preferred_identity,
+    char *error,
+    size_t error_size) {
+    LockDockdStateSnapshot previous_state;
+    bool restore_dock_display = false;
+    char operation_error[LOCKDOCKD_ERROR_BUFFER_SIZE];
+    char preference_rollback_error[LOCKDOCKD_ERROR_BUFFER_SIZE] = "";
+    char runtime_rollback_error[LOCKDOCKD_ERROR_BUFFER_SIZE] = "";
+
+    if (preferred_identity == NULL) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    if (!lockdockd_capture_state_snapshot(&previous_state, status, true, error,
+                                          error_size)) {
+        return false;
+    }
+
+    restore_dock_display =
+        previous_state.has_dock_display && previous_state.dock_display != display_id;
+
+    if (restore_dock_display &&
+        !lockdockd_relocate_display(display_id, operation_error,
+                                    sizeof(operation_error))) {
+        if (!lockdockd_restore_runtime_state(&previous_state, restore_dock_display,
+                                             runtime_rollback_error,
+                                             sizeof(runtime_rollback_error))) {
+            lockdockd_set_rollback_error(error, error_size, operation_error, NULL,
+                                         runtime_rollback_error);
+        } else {
+            lockdockd_set_error(error, error_size, operation_error);
+        }
+
+        return false;
+    }
+
+    if (!lockdockd_locker_set_target(display_id, operation_error,
+                                     sizeof(operation_error))) {
+        if (!lockdockd_restore_runtime_state(&previous_state, restore_dock_display,
+                                             runtime_rollback_error,
+                                             sizeof(runtime_rollback_error))) {
+            lockdockd_set_rollback_error(error, error_size, operation_error, NULL,
+                                         runtime_rollback_error);
+        } else {
+            lockdockd_set_error(error, error_size, operation_error);
+        }
+
+        return false;
+    }
+
+    if (!lockdockd_preferences_save_preferred_display(preferred_identity,
+                                                      operation_error,
+                                                      sizeof(operation_error))) {
+        if (!lockdockd_restore_preferred_display(&previous_state,
+                                                 preference_rollback_error,
+                                                 sizeof(preference_rollback_error))) {
+            /* Keep rolling back runtime even if preferences rollback fails. */
+        }
+
+        if (!lockdockd_restore_runtime_state(&previous_state, restore_dock_display,
+                                             runtime_rollback_error,
+                                             sizeof(runtime_rollback_error))) {
+            lockdockd_set_rollback_error(error, error_size, operation_error,
+                                         preference_rollback_error,
+                                         runtime_rollback_error);
+        } else if (preference_rollback_error[0] != '\0') {
+            lockdockd_set_rollback_error(error, error_size, operation_error,
+                                         preference_rollback_error, NULL);
+        } else {
+            lockdockd_set_error(error, error_size, operation_error);
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
 static void lockdockd_handle_request(const LockDockdRequest *request,
                                      char *response,
                                      size_t response_size) {
@@ -634,8 +889,7 @@ static void lockdockd_handle_request(const LockDockdRequest *request,
     }
 
     if (request->command == LOCKDOCKD_REQUEST_UNLOCK) {
-        lockdockd_locker_clear_target();
-        if (!lockdockd_preferences_clear_preferred_display(error, sizeof(error))) {
+        if (!lockdockd_apply_unlock(error, sizeof(error))) {
             lockdockd_json_error_response(response, response_size, error);
             return;
         }
@@ -665,20 +919,8 @@ static void lockdockd_handle_request(const LockDockdRequest *request,
         return;
     }
 
-    if (status.location_index != request->target) {
-        if (!lockdockd_relocate_display(display_id, error, sizeof(error))) {
-            lockdockd_json_error_response(response, response_size, error);
-            return;
-        }
-    }
-
-    if (!lockdockd_locker_set_target(display_id, error, sizeof(error))) {
-        lockdockd_json_error_response(response, response_size, error);
-        return;
-    }
-
-    if (!lockdockd_preferences_save_preferred_display(&preferred_identity, error,
-                                                      sizeof(error))) {
+    if (!lockdockd_apply_set_state(&status, display_id, &preferred_identity, error,
+                                   sizeof(error))) {
         lockdockd_json_error_response(response, response_size, error);
         return;
     }
