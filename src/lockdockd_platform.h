@@ -11,8 +11,6 @@ bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
                                  char *buffer,
                                  size_t buffer_size);
 bool lockdockd_is_accessibility_trusted(void);
-bool lockdockd_hide_cursor_for_relocation(void);
-void lockdockd_show_cursor_for_relocation(void);
 LockDockdDockOrientation lockdockd_get_dock_orientation(void);
 CGDirectDisplayID lockdockd_get_dock_display(void);
 

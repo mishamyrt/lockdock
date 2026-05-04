@@ -1,7 +1,7 @@
 #include "lockdockd_commands.h"
 
 #include "lockdockd_display.h"
-#include "lockdockd_objc_bridge.h"
+#include "lockdockd_platform.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
