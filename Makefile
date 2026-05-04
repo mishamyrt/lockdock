@@ -29,7 +29,8 @@ $(SRC_DIR)/%.o: $(SRC_DIR)/%.c
 	clang $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(TARGET) $(OBJS)
+	rm -f $(TARGET)
+	rm -f $(SRC_DIR)/*.o
 
 fmt:
 	find src/ \
