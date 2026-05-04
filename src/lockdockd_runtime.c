@@ -72,7 +72,8 @@ bool lockdockd_resolve_display_token(const char *display_arg,
 
     if (display_id == 0) {
         snprintf(error, error_size,
-                 "Cannot resolve display '%s'. Use index or display ID from 'list'",
+                 "Cannot resolve display '%s'. Use an index from 'list' or a raw "
+                 "display ID via 'id:<n>'",
                  display_arg == NULL ? "" : display_arg);
         return false;
     }

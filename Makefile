@@ -15,7 +15,6 @@ OPTFLAGS ?= -O3 -march=native -flto
 CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" $(OPTFLAGS)
 FRAMEWORKS = \
 	-framework CoreGraphics \
-	-framework IOKit \
 	-framework ApplicationServices \
 	-framework CoreFoundation
 

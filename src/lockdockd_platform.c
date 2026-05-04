@@ -1,160 +1,249 @@
 #include "lockdockd_platform.h"
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#define JSON_TOKENIZER_IMPLEMENTATION
+#include "../thirdparty/json_tokenizer.h"
+#pragma clang diagnostic pop
+
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/graphics/IOGraphicsLib.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
 #define LOCKDOCKD_MAX_DISPLAYS 32
 
-static bool lockdockd_copy_cfstring(CFStringRef string,
-                                    char *buffer,
-                                    size_t buffer_size) {
-    if (string == NULL || buffer == NULL || buffer_size == 0) {
+#define LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
+
+typedef struct {
+    CGDirectDisplayID display_id;
+    char name[256];
+} LockDockdDisplayNameEntry;
+
+typedef struct {
+    bool has_display_id;
+    bool has_name;
+    bool prefers_display_id;
+    CGDirectDisplayID display_id;
+    char name[256];
+} LockDockdDisplayObjectState;
+
+static LockDockdDisplayNameEntry
+    lockdockd_display_name_cache[LOCKDOCKD_MAX_DISPLAYS];
+static size_t lockdockd_display_name_cache_count = 0;
+static time_t lockdockd_display_name_cache_loaded_at = 0;
+
+static bool lockdockd_parse_display_id(const char *value,
+                                       CGDirectDisplayID *display_id_out) {
+    char *endptr = NULL;
+    unsigned long parsed;
+
+    if (value == NULL || display_id_out == NULL || value[0] == '\0') {
         return false;
     }
 
-    if (CFGetTypeID(string) != CFStringGetTypeID()) {
+    parsed = strtoul(value, &endptr, 10);
+    if (endptr == value || *endptr != '\0' || parsed == 0 || parsed > UINT32_MAX) {
         return false;
     }
 
-    if (!CFStringGetCString(string, buffer, (CFIndex)buffer_size,
-                            kCFStringEncodingUTF8) ||
-        buffer[0] == '\0') {
-        return false;
-    }
-
+    *display_id_out = (CGDirectDisplayID)parsed;
     return true;
 }
 
-static bool lockdockd_cfnumber_equals_uint32(CFTypeRef value, uint32_t expected) {
-    uint32_t actual = 0;
-
-    if (value == NULL || CFGetTypeID(value) != CFNumberGetTypeID()) {
-        return false;
+static void lockdockd_cache_display_name(LockDockdDisplayNameEntry *entries,
+                                         size_t *entry_count,
+                                         CGDirectDisplayID display_id,
+                                         const char *name) {
+    if (entries == NULL || entry_count == NULL || name == NULL || name[0] == '\0' ||
+        display_id == 0) {
+        return;
     }
 
-    return CFNumberGetValue((CFNumberRef)value, kCFNumberSInt32Type, &actual) &&
-           actual == expected;
-}
-
-static bool lockdockd_copy_preferred_display_name(CFDictionaryRef info,
-                                                  char *buffer,
-                                                  size_t buffer_size) {
-    CFDictionaryRef names;
-    CFIndex count;
-    const void **keys;
-    const void **values;
-    bool copied = false;
-
-    if (info == NULL || buffer == NULL || buffer_size == 0) {
-        return false;
-    }
-
-    names = (CFDictionaryRef)CFDictionaryGetValue(info, CFSTR(kDisplayProductName));
-    if (names == NULL || CFGetTypeID(names) != CFDictionaryGetTypeID()) {
-        return false;
-    }
-
-    count = CFDictionaryGetCount(names);
-    if (count <= 0) {
-        return false;
-    }
-
-    keys = (const void **)calloc((size_t)count, sizeof(*keys));
-    values = (const void **)calloc((size_t)count, sizeof(*values));
-    if (keys == NULL || values == NULL) {
-        free(keys);
-        free(values);
-        return false;
-    }
-
-    CFDictionaryGetKeysAndValues(names, keys, values);
-
-    for (CFIndex i = 0; i < count; i++) {
-        if (lockdockd_copy_cfstring((CFStringRef)values[i], buffer, buffer_size)) {
-            copied = true;
-            break;
+    for (size_t i = 0; i < *entry_count; i++) {
+        if (entries[i].display_id == display_id) {
+            snprintf(entries[i].name, sizeof(entries[i].name), "%s", name);
+            return;
         }
     }
 
-    free(keys);
-    free(values);
-    return copied;
+    if (*entry_count >= LOCKDOCKD_MAX_DISPLAYS) {
+        return;
+    }
+
+    entries[*entry_count].display_id = display_id;
+    snprintf(entries[*entry_count].name, sizeof(entries[*entry_count].name), "%s",
+             name);
+    (*entry_count)++;
 }
 
-static io_service_t lockdockd_find_display_service(CGDirectDisplayID display_id) {
-    uint32_t vendor = CGDisplayVendorNumber(display_id);
-    uint32_t product = CGDisplayModelNumber(display_id);
-    uint32_t serial = CGDisplaySerialNumber(display_id);
-    io_iterator_t iter = IO_OBJECT_NULL;
-    CFMutableDictionaryRef match;
-    io_service_t best = MACH_PORT_NULL;
-    io_service_t service;
+static bool lockdockd_parse_system_profiler_file(const char *path,
+                                                 LockDockdDisplayNameEntry *entries,
+                                                 size_t *entry_count) {
+    LockDockdDisplayObjectState object_stack[32];
+    char current_name[128];
+    json_t *json;
+    json_token_t token;
+    int object_depth = -1;
 
-    if (vendor == 0 && product == 0) {
-        return MACH_PORT_NULL;
+    if (path == NULL || entries == NULL || entry_count == NULL) {
+        return false;
     }
 
-    match = IOServiceMatching("IODisplayConnect");
-    if (match == NULL) {
-        return MACH_PORT_NULL;
+    json = json_fopen(path);
+    if (json == NULL) {
+        return false;
     }
 
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &iter) !=
-            KERN_SUCCESS ||
-        iter == IO_OBJECT_NULL) {
-        return MACH_PORT_NULL;
-    }
+    memset(object_stack, 0, sizeof(object_stack));
+    memset(current_name, 0, sizeof(current_name));
+    *entry_count = 0;
 
-    while ((service = IOIteratorNext(iter)) != IO_OBJECT_NULL) {
-        CFMutableDictionaryRef props = NULL;
+    while ((token = json_next_token(json)) != JSON_END_DOCUMENT) {
+        if (token == JSON_ERROR) {
+            json_close(json);
+            return false;
+        }
 
-        if (IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault,
-                                              0) == KERN_SUCCESS &&
-            props != NULL) {
-            bool vendor_matches = lockdockd_cfnumber_equals_uint32(
-                CFDictionaryGetValue(props, CFSTR(kDisplayVendorID)), vendor);
-            bool product_matches = lockdockd_cfnumber_equals_uint32(
-                CFDictionaryGetValue(props, CFSTR(kDisplayProductID)), product);
-            bool serial_matches = lockdockd_cfnumber_equals_uint32(
-                CFDictionaryGetValue(props, CFSTR(kDisplaySerialNumber)), serial);
+        switch (token) {
+            case JSON_START_OBJECT:
+                if (object_depth + 1 >=
+                    (int)(sizeof(object_stack) / sizeof(object_stack[0]))) {
+                    json_close(json);
+                    return false;
+                }
+                object_depth++;
+                memset(&object_stack[object_depth], 0,
+                       sizeof(object_stack[object_depth]));
+                current_name[0] = '\0';
+                break;
 
-            CFRelease(props);
+            case JSON_END_OBJECT:
+                if (object_depth >= 0 && object_stack[object_depth].has_display_id &&
+                    object_stack[object_depth].has_name) {
+                    lockdockd_cache_display_name(
+                        entries, entry_count, object_stack[object_depth].display_id,
+                        object_stack[object_depth].name);
+                }
+                if (object_depth >= 0) {
+                    object_depth--;
+                }
+                current_name[0] = '\0';
+                break;
 
-            if (vendor_matches && product_matches) {
-                if (serial_matches) {
-                    if (best != MACH_PORT_NULL) {
-                        IOObjectRelease(best);
+            case JSON_NAME:
+                snprintf(current_name, sizeof(current_name), "%s",
+                         json_get_name(json) == NULL ? "" : json_get_name(json));
+                break;
+
+            case JSON_STRING:
+            case JSON_UINT64:
+            case JSON_INT64:
+                if (object_depth >= 0 && current_name[0] != '\0') {
+                    const char *value = json_get_value(json);
+
+                    if (value != NULL) {
+                        if (strcmp(current_name, "_name") == 0) {
+                            snprintf(object_stack[object_depth].name,
+                                     sizeof(object_stack[object_depth].name), "%s",
+                                     value);
+                            object_stack[object_depth].has_name =
+                                object_stack[object_depth].name[0] != '\0';
+                        } else if (strcmp(current_name, "_spdisplays_displayID") ==
+                                   0) {
+                            object_stack[object_depth].has_display_id =
+                                lockdockd_parse_display_id(
+                                    value, &object_stack[object_depth].display_id);
+                            object_stack[object_depth].prefers_display_id =
+                                object_stack[object_depth].has_display_id;
+                        } else if (!object_stack[object_depth].prefers_display_id &&
+                                   strcmp(current_name, "_spdisplays_CGSDID") == 0) {
+                            object_stack[object_depth].has_display_id =
+                                lockdockd_parse_display_id(
+                                    value, &object_stack[object_depth].display_id);
+                        }
                     }
-                    best = service;
-                    break;
                 }
+                current_name[0] = '\0';
+                break;
 
-                if (best == MACH_PORT_NULL) {
-                    best = service;
-                    continue;
-                }
-            }
+            default:
+                current_name[0] = '\0';
+                break;
         }
-
-        IOObjectRelease(service);
     }
 
-    IOObjectRelease(iter);
-    return best;
+    json_close(json);
+    return *entry_count > 0;
+}
+
+static bool lockdockd_refresh_display_name_cache(void) {
+    LockDockdDisplayNameEntry entries[LOCKDOCKD_MAX_DISPLAYS];
+    size_t entry_count = 0;
+    char path[] = "/tmp/lockdockd-system-profiler-XXXXXX";
+    char command[PATH_MAX + 96];
+    int fd;
+    bool refreshed = false;
+
+    memset(entries, 0, sizeof(entries));
+
+    fd = mkstemp(path);
+    if (fd < 0) {
+        return false;
+    }
+    close(fd);
+
+    if (snprintf(
+            command, sizeof(command),
+            "/usr/sbin/system_profiler -json SPDisplaysDataType > %s 2>/dev/null",
+            path) >= (int)sizeof(command)) {
+        unlink(path);
+        return false;
+    }
+
+    if (system(command) == 0 &&
+        lockdockd_parse_system_profiler_file(path, entries, &entry_count)) {
+        memcpy(lockdockd_display_name_cache, entries, sizeof(entries));
+        lockdockd_display_name_cache_count = entry_count;
+        lockdockd_display_name_cache_loaded_at = time(NULL);
+        refreshed = true;
+    }
+
+    unlink(path);
+    return refreshed;
+}
+
+static bool lockdockd_copy_cached_display_name(CGDirectDisplayID display_id,
+                                               char *buffer,
+                                               size_t buffer_size) {
+    if (buffer == NULL || buffer_size == 0) {
+        return false;
+    }
+
+    for (size_t i = 0; i < lockdockd_display_name_cache_count; i++) {
+        if (lockdockd_display_name_cache[i].display_id == display_id &&
+            lockdockd_display_name_cache[i].name[0] != '\0') {
+            snprintf(buffer, buffer_size, "%s",
+                     lockdockd_display_name_cache[i].name);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
                                  char *buffer,
                                  size_t buffer_size) {
-    io_service_t service;
-    CFDictionaryRef info;
-    bool copied = false;
+    time_t now = time(NULL);
 
     if (buffer == NULL || buffer_size == 0) {
         return false;
@@ -162,21 +251,27 @@ bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
 
     buffer[0] = '\0';
 
-    service = lockdockd_find_display_service(display_id);
-    if (service == MACH_PORT_NULL) {
+    if (lockdockd_copy_cached_display_name(display_id, buffer, buffer_size)) {
+        return true;
+    }
+
+    if (lockdockd_display_name_cache_loaded_at == 0 ||
+        difftime(now, lockdockd_display_name_cache_loaded_at) >=
+            LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS) {
+        if (!lockdockd_refresh_display_name_cache()) {
+            return false;
+        }
+    }
+
+    if (lockdockd_copy_cached_display_name(display_id, buffer, buffer_size)) {
+        return true;
+    }
+
+    if (!lockdockd_refresh_display_name_cache()) {
         return false;
     }
 
-    info = IODisplayCreateInfoDictionary(service, kIODisplayOnlyPreferredName);
-    IOObjectRelease(service);
-
-    if (info == NULL) {
-        return false;
-    }
-
-    copied = lockdockd_copy_preferred_display_name(info, buffer, buffer_size);
-    CFRelease(info);
-    return copied;
+    return lockdockd_copy_cached_display_name(display_id, buffer, buffer_size);
 }
 
 bool lockdockd_is_accessibility_trusted(void) {

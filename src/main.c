@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
 
     if (strcmp(command, "relocate") == 0) {
         if (argc < 3) {
-            fprintf(stderr, "Usage: %s relocate <display-id>\n", argv[0]);
+            fprintf(stderr, "Usage: %s relocate <display>\n", argv[0]);
             return 1;
         }
 
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 
     if (strcmp(command, "lock") == 0) {
         if (argc < 3) {
-            fprintf(stderr, "Usage: %s lock <display-id>\n", argv[0]);
+            fprintf(stderr, "Usage: %s lock <display>\n", argv[0]);
             return 1;
         }
 

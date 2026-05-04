@@ -64,7 +64,7 @@ int lockdockd_cmd_list(void) {
         lockdockd_copy_display_label(local_status.displays[i], display_name,
                                      sizeof(display_name));
 
-        printf("[%u] %s", i, display_name);
+        printf("[%u] %s (id=%u)", i, display_name, local_status.displays[i]);
         if ((int)i == local_status.location_index) {
             printf(" *");
         }
@@ -111,7 +111,9 @@ void lockdockd_print_usage(const char *prog) {
     printf("  %s status                   Print daemon status JSON\n", prog);
     printf("  %s list                     List all displays via daemon status\n",
            prog);
-    printf("  %s relocate <display-id>    Move Dock to a display\n", prog);
-    printf("  %s lock <display-id>        Lock Dock to a display\n", prog);
+    printf("  %s relocate <display>       Move Dock to a display index or id:<n>\n",
+           prog);
+    printf("  %s lock <display>           Lock Dock to a display index or id:<n>\n",
+           prog);
     printf("  %s unlock                   Clear the current Dock lock\n", prog);
 }
