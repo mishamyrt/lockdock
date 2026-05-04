@@ -22,6 +22,14 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    if (strcmp(command, "enable") == 0) {
+        return lockdockd_cmd_enable();
+    }
+
+    if (strcmp(command, "disable") == 0) {
+        return lockdockd_cmd_disable();
+    }
+
     if (strcmp(command, "version") == 0) {
         printf("lockdockd %s\n", APP_VERSION);
         return 0;

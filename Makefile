@@ -7,6 +7,7 @@ OBJS = \
 	$(SRC_DIR)/lockdockd_daemon.o \
 	$(SRC_DIR)/lockdockd_display.o \
 	$(SRC_DIR)/lockdockd_ipc.o \
+	$(SRC_DIR)/lockdockd_launchagent.o \
 	$(SRC_DIR)/lockdockd_locker.o \
 	$(SRC_DIR)/lockdockd_platform.o \
 	$(SRC_DIR)/lockdockd_runtime.o
