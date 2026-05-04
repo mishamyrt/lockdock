@@ -1,6 +1,9 @@
 #include "lockdockd_display.h"
 
+#include <ColorSync/ColorSyncDevice.h>
+#include <CoreFoundation/CoreFoundation.h>
 #include <math.h>
+#include <stdbool.h>
 #include <string.h>
 
 #define LOCKDOCKD_MAX_OVERLAPS 64
@@ -9,6 +12,105 @@ typedef struct {
     CGFloat start;
     CGFloat end;
 } LockDockdOverlap;
+
+bool lockdockd_display_identity_is_valid(
+    const LockDockdDisplayIdentity *identity) {
+    if (identity == NULL) {
+        return false;
+    }
+
+    return identity->uuid[0] != '\0' || identity->is_builtin ||
+           identity->vendor_number != 0 || identity->model_number != 0 ||
+           identity->serial_number != 0;
+}
+
+bool lockdockd_copy_display_identity(CGDirectDisplayID display_id,
+                                     LockDockdDisplayIdentity *identity_out) {
+    CFUUIDRef uuid = NULL;
+    CFStringRef uuid_string = NULL;
+
+    if (display_id == 0 || identity_out == NULL) {
+        return false;
+    }
+
+    memset(identity_out, 0, sizeof(*identity_out));
+    identity_out->is_builtin = CGDisplayIsBuiltin(display_id) != 0;
+    identity_out->vendor_number = CGDisplayVendorNumber(display_id);
+    identity_out->model_number = CGDisplayModelNumber(display_id);
+    identity_out->serial_number = CGDisplaySerialNumber(display_id);
+
+    uuid = CGDisplayCreateUUIDFromDisplayID(display_id);
+    if (uuid != NULL) {
+        uuid_string = CFUUIDCreateString(kCFAllocatorDefault, uuid);
+        if (uuid_string != NULL) {
+            CFStringGetCString(uuid_string, identity_out->uuid,
+                               sizeof(identity_out->uuid), kCFStringEncodingUTF8);
+            CFRelease(uuid_string);
+        }
+
+        CFRelease(uuid);
+    }
+
+    return lockdockd_display_identity_is_valid(identity_out);
+}
+
+static bool lockdockd_display_identity_fallback_matches(
+    const LockDockdDisplayIdentity *left,
+    const LockDockdDisplayIdentity *right) {
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+
+    return left->is_builtin == right->is_builtin &&
+           left->vendor_number == right->vendor_number &&
+           left->model_number == right->model_number &&
+           left->serial_number == right->serial_number;
+}
+
+bool lockdockd_find_active_display_by_identity(
+    const LockDockdDisplayIdentity *identity,
+    CGDirectDisplayID *display_id_out) {
+    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
+    uint32_t count = 0;
+
+    if (!lockdockd_display_identity_is_valid(identity) || display_id_out == NULL) {
+        return false;
+    }
+
+    count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
+
+    if (identity->uuid[0] != '\0') {
+        for (uint32_t i = 0; i < count; i++) {
+            LockDockdDisplayIdentity current_identity;
+
+            if (!lockdockd_copy_display_identity(displays[i], &current_identity)) {
+                continue;
+            }
+
+            if (current_identity.uuid[0] != '\0' &&
+                strcmp(current_identity.uuid, identity->uuid) == 0) {
+                *display_id_out = displays[i];
+                return true;
+            }
+        }
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        LockDockdDisplayIdentity current_identity;
+
+        if (!lockdockd_copy_display_identity(displays[i], &current_identity)) {
+            continue;
+        }
+
+        if (lockdockd_display_identity_fallback_matches(&current_identity,
+                                                        identity)) {
+            *display_id_out = displays[i];
+            return true;
+        }
+    }
+
+    return false;
+}
 
 uint32_t lockdockd_get_active_displays(CGDirectDisplayID *displays,
                                        uint32_t max_displays) {

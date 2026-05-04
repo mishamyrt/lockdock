@@ -26,6 +26,10 @@ Response when the Dock **is not** pinned:
 - `location` — index of the display where the Dock is currently located;
 - `target` — index of the display where the Dock is pinned.
 
+If the pinned display is disconnected, `target` disappears because the active lock is
+removed. When the same physical display is connected again, `lockdockd` moves the
+Dock back to it and `target` appears again automatically.
+
 ## Pin Dock to the specified display
 
 Request:

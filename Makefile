@@ -10,6 +10,7 @@ OBJS = \
 	$(SRC_DIR)/lockdockd_launchagent.o \
 	$(SRC_DIR)/lockdockd_locker.o \
 	$(SRC_DIR)/lockdockd_platform.o \
+	$(SRC_DIR)/lockdockd_preferences.o \
 	$(SRC_DIR)/lockdockd_runtime.o
 
 OPTFLAGS ?= -O3 -march=native -flto
@@ -17,6 +18,7 @@ CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" $(OPTFLAGS)
 FRAMEWORKS = \
 	-framework CoreGraphics \
 	-framework ApplicationServices \
+	-framework ColorSync \
 	-framework CoreFoundation
 
 .PHONY: all clean

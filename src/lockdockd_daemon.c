@@ -2,6 +2,7 @@
 
 #include "lockdockd_ipc.h"
 #include "lockdockd_locker.h"
+#include "lockdockd_preferences.h"
 #include "lockdockd_runtime.h"
 
 #include "../thirdparty/json_tokenizer.h"
@@ -11,6 +12,7 @@
 #include <limits.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -22,6 +24,7 @@
 #include <unistd.h>
 
 static volatile sig_atomic_t g_daemon_running = 1;
+static _Atomic bool g_display_state_dirty = false;
 
 typedef enum {
     LOCKDOCKD_REQUEST_NONE = 0,
@@ -40,6 +43,24 @@ static void lockdockd_signal_handler(int signal_number) {
     if (signal_number == SIGINT || signal_number == SIGTERM) {
         g_daemon_running = 0;
     }
+}
+
+static void lockdockd_mark_display_state_dirty(void) {
+    atomic_store(&g_display_state_dirty, true);
+}
+
+static void lockdockd_display_reconfiguration_callback(
+    CGDirectDisplayID display_id,
+    CGDisplayChangeSummaryFlags flags,
+    void *user_info) {
+    (void)display_id;
+    (void)user_info;
+
+    if ((flags & kCGDisplayBeginConfigurationFlag) != 0) {
+        return;
+    }
+
+    lockdockd_mark_display_state_dirty();
 }
 
 static void lockdockd_set_error(char *buffer,
@@ -552,10 +573,50 @@ static bool lockdockd_resolve_target_display(const LockDockdStatus *status,
     return true;
 }
 
+static bool lockdockd_reconcile_display_state(char *error, size_t error_size) {
+    LockDockdDisplayIdentity preferred_identity;
+    CGDirectDisplayID locked_display = lockdockd_locker_get_target();
+    CGDirectDisplayID preferred_display = 0;
+    LockDockdStatus status;
+
+    if (locked_display != 0 && lockdockd_find_display_index(locked_display) < 0) {
+        lockdockd_locker_clear_target();
+        locked_display = 0;
+    }
+
+    if (!lockdockd_preferences_load_preferred_display(&preferred_identity)) {
+        return true;
+    }
+
+    if (locked_display != 0) {
+        return true;
+    }
+
+    if (!lockdockd_find_active_display_by_identity(&preferred_identity,
+                                                   &preferred_display)) {
+        return true;
+    }
+
+    if (!lockdockd_query_status(&status, error, error_size)) {
+        return false;
+    }
+
+    if (status.displays[status.location_index] == preferred_display) {
+        return lockdockd_locker_set_target(preferred_display, error, error_size);
+    }
+
+    if (!lockdockd_relocate_display(preferred_display, error, error_size)) {
+        return false;
+    }
+
+    return lockdockd_locker_set_target(preferred_display, error, error_size);
+}
+
 static void lockdockd_handle_request(const LockDockdRequest *request,
                                      char *response,
                                      size_t response_size) {
     char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
+    LockDockdDisplayIdentity preferred_identity;
     LockDockdStatus status;
     CGDirectDisplayID display_id = 0;
 
@@ -574,6 +635,10 @@ static void lockdockd_handle_request(const LockDockdRequest *request,
 
     if (request->command == LOCKDOCKD_REQUEST_UNLOCK) {
         lockdockd_locker_clear_target();
+        if (!lockdockd_preferences_clear_preferred_display(error, sizeof(error))) {
+            lockdockd_json_error_response(response, response_size, error);
+            return;
+        }
         lockdockd_success_response(response, response_size);
         return;
     }
@@ -594,6 +659,12 @@ static void lockdockd_handle_request(const LockDockdRequest *request,
         return;
     }
 
+    if (!lockdockd_copy_display_identity(display_id, &preferred_identity)) {
+        lockdockd_json_error_response(response, response_size,
+                                      "Could not identify target display");
+        return;
+    }
+
     if (status.location_index != request->target) {
         if (!lockdockd_relocate_display(display_id, error, sizeof(error))) {
             lockdockd_json_error_response(response, response_size, error);
@@ -602,6 +673,12 @@ static void lockdockd_handle_request(const LockDockdRequest *request,
     }
 
     if (!lockdockd_locker_set_target(display_id, error, sizeof(error))) {
+        lockdockd_json_error_response(response, response_size, error);
+        return;
+    }
+
+    if (!lockdockd_preferences_save_preferred_display(&preferred_identity, error,
+                                                      sizeof(error))) {
         lockdockd_json_error_response(response, response_size, error);
         return;
     }
@@ -773,6 +850,25 @@ static void lockdockd_pump_run_loop(void) {
     }
 }
 
+static bool lockdockd_register_display_callback(char *error, size_t error_size) {
+    CGError cg_error = CGDisplayRegisterReconfigurationCallback(
+        lockdockd_display_reconfiguration_callback, NULL);
+
+    if (cg_error == kCGErrorSuccess) {
+        return true;
+    }
+
+    snprintf(error, error_size,
+             "Failed to register display reconfiguration callback (%d)",
+             (int)cg_error);
+    return false;
+}
+
+static void lockdockd_remove_display_callback(void) {
+    CGDisplayRemoveReconfigurationCallback(
+        lockdockd_display_reconfiguration_callback, NULL);
+}
+
 int lockdockd_run_daemon(void) {
     char socket_path[PATH_MAX];
     char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
@@ -787,6 +883,17 @@ int lockdockd_run_daemon(void) {
     if (listen_fd < 0) {
         fprintf(stderr, "%s\n", error);
         return 1;
+    }
+
+    if (!lockdockd_register_display_callback(error, sizeof(error))) {
+        fprintf(stderr, "%s\n", error);
+        close(listen_fd);
+        unlink(socket_path);
+        return 1;
+    }
+
+    if (!lockdockd_reconcile_display_state(error, sizeof(error))) {
+        fprintf(stderr, "Display reconcile failed: %s\n", error);
     }
 
     printf("lockdockd daemon listening on %s\n", socket_path);
@@ -844,8 +951,14 @@ int lockdockd_run_daemon(void) {
         }
 
         lockdockd_pump_run_loop();
+
+        if (atomic_exchange(&g_display_state_dirty, false) &&
+            !lockdockd_reconcile_display_state(error, sizeof(error))) {
+            fprintf(stderr, "Display reconcile failed: %s\n", error);
+        }
     }
 
+    lockdockd_remove_display_callback();
     lockdockd_locker_shutdown();
     if (listen_fd >= 0) {
         close(listen_fd);
