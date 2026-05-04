@@ -4,8 +4,12 @@ SRC_DIR = src
 OBJS = \
 	$(SRC_DIR)/main.o \
 	$(SRC_DIR)/lockdockd_commands.o \
+	$(SRC_DIR)/lockdockd_daemon.o \
 	$(SRC_DIR)/lockdockd_display.o \
-	$(SRC_DIR)/lockdockd_objc_bridge.o
+	$(SRC_DIR)/lockdockd_ipc.o \
+	$(SRC_DIR)/lockdockd_locker.o \
+	$(SRC_DIR)/lockdockd_platform.o \
+	$(SRC_DIR)/lockdockd_runtime.o
 
 OPTFLAGS ?= -O3 -march=native -flto
 CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" $(OPTFLAGS)

@@ -3,7 +3,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define LOCKDOCKD_MAX_DISPLAYS 32
 #define LOCKDOCKD_MAX_OVERLAPS 64
 
 typedef struct {
@@ -11,17 +10,34 @@ typedef struct {
     CGFloat end;
 } LockDockdOverlap;
 
-static uint32_t lockdockd_get_active_displays(
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS]) {
+uint32_t lockdockd_get_active_displays(CGDirectDisplayID *displays,
+                                       uint32_t max_displays) {
     uint32_t count = 0;
 
-    CGGetActiveDisplayList(LOCKDOCKD_MAX_DISPLAYS, displays, &count);
+    if (displays == NULL || max_displays == 0) {
+        return 0;
+    }
+
+    CGGetActiveDisplayList(max_displays, displays, &count);
     return count;
+}
+
+int lockdockd_find_display_index(CGDirectDisplayID display_id) {
+    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
+    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
+
+    for (uint32_t i = 0; i < count; i++) {
+        if (displays[i] == display_id) {
+            return (int)i;
+        }
+    }
+
+    return -1;
 }
 
 CGDirectDisplayID lockdockd_resolve_display_arg(const char *arg) {
     CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = lockdockd_get_active_displays(displays);
+    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
     char *endptr = NULL;
     unsigned long val;
 
@@ -52,7 +68,7 @@ LockDockdSafeSegment lockdockd_find_safe_edge_segment(
     CGDirectDisplayID target_id,
     LockDockdDockOrientation edge) {
     CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = lockdockd_get_active_displays(displays);
+    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
     CGRect target = CGDisplayBounds(target_id);
     CGFloat edge_min;
     CGFloat edge_max;
@@ -196,7 +212,7 @@ LockDockdSafeSegment lockdockd_find_safe_edge_segment(
 
 CGDirectDisplayID lockdockd_find_display_at_point(CGPoint point) {
     CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = lockdockd_get_active_displays(displays);
+    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
 
     for (uint32_t i = 0; i < count; i++) {
         CGRect bounds = CGDisplayBounds(displays[i]);

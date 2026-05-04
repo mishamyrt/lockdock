@@ -1,386 +1,117 @@
 #include "lockdockd_commands.h"
 
-#include "lockdockd_display.h"
-#include "lockdockd_platform.h"
+#include "lockdockd_daemon.h"
+#include "lockdockd_ipc.h"
+#include "lockdockd_runtime.h"
 
-#include <ApplicationServices/ApplicationServices.h>
-#include <CoreFoundation/CoreFoundation.h>
-#include <CoreGraphics/CoreGraphics.h>
-#include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <string.h>
 
-#define LOCKDOCKD_MAX_DISPLAYS 32
-#define LOCKDOCKD_DISPLAY_NAME_BUFFER_SIZE 256
+static int lockdockd_print_daemon_response(const char *request) {
+    char response[LOCKDOCKD_IPC_MAX_MESSAGE];
+    char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
 
-static CGDirectDisplayID g_locked_display = 0;
-static volatile int g_locker_running = 1;
-static double g_lock_edge_zone = 4.0;
+    if (lockdockd_ipc_send_request(request, response, sizeof(response), error,
+                                   sizeof(error)) != 0) {
+        fprintf(stderr, "%s\n", error);
+        return 1;
+    }
 
-static const char *lockdockd_orientation_name(LockDockdDockOrientation orientation) {
-    static const char *const names[] = {"bottom", "left", "right"};
+    puts(response);
+    if (lockdockd_ipc_response_is_error(response)) {
+        return 1;
+    }
 
-    return names[orientation];
+    return 0;
 }
 
-static void lockdockd_print_display_name(CGDirectDisplayID display_id) {
-    char name[LOCKDOCKD_DISPLAY_NAME_BUFFER_SIZE];
-
-    if (lockdockd_copy_display_name(display_id, name, sizeof(name))) {
-        printf("%s", name);
-        return;
-    }
-
-    if (CGDisplayIsBuiltin(display_id)) {
-        printf("Built-in Display");
-        return;
-    }
-
-    printf("Display-%u", display_id);
+int lockdockd_cmd_daemon(void) {
+    return lockdockd_run_daemon();
 }
 
-static CGPoint lockdockd_current_mouse_location(void) {
-    CGEventRef event = CGEventCreate(NULL);
-    CGPoint point = CGPointMake(0, 0);
-
-    if (event == NULL) {
-        return point;
-    }
-
-    point = CGEventGetLocation(event);
-    CFRelease(event);
-    return point;
-}
-
-static void lockdockd_post_move_event(CGEventSourceRef source, CGPoint point) {
-    CGEventRef event = CGEventCreateMouseEvent(source, kCGEventMouseMoved, point,
-                                               kCGMouseButtonLeft);
-
-    if (event == NULL) {
-        return;
-    }
-
-    CGEventPost(kCGHIDEventTap, event);
-    CFRelease(event);
-}
-
-static bool lockdockd_set_cursor_association(bool associated) {
-    return CGAssociateMouseAndMouseCursorPosition(associated) == kCGErrorSuccess;
-}
-
-static void lockdockd_post_edge_nudge(CGEventSourceRef source,
-                                      CGPoint point,
-                                      LockDockdDockOrientation orientation) {
-    CGEventRef event = CGEventCreateMouseEvent(source, kCGEventMouseMoved, point,
-                                               kCGMouseButtonLeft);
-
-    if (event == NULL) {
-        return;
-    }
-
-    if (orientation == LOCKDOCKD_ORIENT_BOTTOM) {
-        CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, 1);
-    } else if (orientation == LOCKDOCKD_ORIENT_LEFT) {
-        CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, -1);
-    } else if (orientation == LOCKDOCKD_ORIENT_RIGHT) {
-        CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, 1);
-    }
-
-    CGEventPost(kCGHIDEventTap, event);
-    CFRelease(event);
-}
-
-static void lockdockd_wait_for_dock_relocation(CGEventSourceRef source,
-                                               CGPoint edge,
-                                               LockDockdDockOrientation orientation,
-                                               CGDirectDisplayID display_id) {
-    for (int i = 0; i < 60; i++) {
-        lockdockd_post_edge_nudge(source, edge, orientation);
-        usleep(15 * 1000);
-
-        if (((i + 1) % 3) == 0 && lockdockd_get_dock_display() == display_id) {
-            return;
-        }
-    }
-
-    for (int i = 0; i < 8; i++) {
-        if (lockdockd_get_dock_display() == display_id) {
-            return;
-        }
-
-        usleep(10 * 1000);
-    }
-}
-
-static void lockdockd_smooth_move(CGEventSourceRef source,
-                                  CGPoint from,
-                                  CGPoint to,
-                                  int steps,
-                                  useconds_t delay_us) {
-    for (int step = 1; step <= steps; step++) {
-        CGFloat t = (CGFloat)step / (CGFloat)steps;
-        CGPoint point =
-            CGPointMake(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
-
-        CGWarpMouseCursorPosition(point);
-        lockdockd_post_move_event(source, point);
-        usleep(delay_us);
-    }
-}
-
-static void lockdockd_signal_handler(int signal_number) {
-    if (signal_number == SIGINT || signal_number == SIGTERM) {
-        g_locker_running = 0;
-    }
-}
-
-static CGEventRef lockdockd_locker_event_callback(CGEventTapProxy proxy,
-                                                  CGEventType type,
-                                                  CGEventRef event,
-                                                  void *user_info) {
-    CGPoint point;
-    CGDirectDisplayID current_display;
-    CGRect bounds;
-    CGFloat distance_from_bottom;
-
-    (void)proxy;
-    (void)user_info;
-
-    if (type != kCGEventMouseMoved && type != kCGEventLeftMouseDragged &&
-        type != kCGEventRightMouseDragged && type != kCGEventOtherMouseDragged) {
-        return event;
-    }
-
-    point = CGEventGetLocation(event);
-    current_display = lockdockd_find_display_at_point(point);
-    if (current_display == 0 || current_display == g_locked_display) {
-        return event;
-    }
-
-    bounds = CGDisplayBounds(current_display);
-    distance_from_bottom = (bounds.origin.y + bounds.size.height) - point.y;
-
-    if (distance_from_bottom < 0 || distance_from_bottom > g_lock_edge_zone) {
-        return event;
-    }
-
-    return NULL;
+int lockdockd_cmd_status(void) {
+    return lockdockd_print_daemon_response("status");
 }
 
 int lockdockd_cmd_list(void) {
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = 0;
-    CGDirectDisplayID dock_display_id = lockdockd_get_dock_display();
+    char response[LOCKDOCKD_IPC_MAX_MESSAGE];
+    char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
+    LockDockdStatus local_status;
+    bool has_target = false;
+    int target_index = -1;
 
-    CGGetActiveDisplayList(LOCKDOCKD_MAX_DISPLAYS, displays, &count);
-
-    for (uint32_t i = 0; i < count; i++) {
-        printf("[%u] ", i);
-        lockdockd_print_display_name(displays[i]);
-        printf("%s\n", displays[i] == dock_display_id ? "*" : "");
+    if (lockdockd_ipc_send_request("status", response, sizeof(response), error,
+                                   sizeof(error)) != 0) {
+        fprintf(stderr, "%s\n", error);
+        return 1;
     }
 
-    if (dock_display_id == 0) {
-        printf("Dock display: unknown");
-        if (!lockdockd_is_accessibility_trusted()) {
-            printf(" (Accessibility permission is not granted)\n");
-        } else {
-            printf("\n");
+    if (!lockdockd_ipc_parse_status_indices(response, &local_status.location_index,
+                                            &has_target, &target_index, error,
+                                            sizeof(error))) {
+        fprintf(stderr, "%s\n", error);
+        return 1;
+    }
+
+    memset(local_status.displays, 0, sizeof(local_status.displays));
+    local_status.display_count =
+        lockdockd_get_active_displays(local_status.displays, LOCKDOCKD_MAX_DISPLAYS);
+
+    for (uint32_t i = 0; i < local_status.display_count; i++) {
+        char display_name[LOCKDOCKD_DISPLAY_NAME_BUFFER_SIZE];
+
+        lockdockd_copy_display_label(local_status.displays[i], display_name,
+                                     sizeof(display_name));
+
+        printf("[%u] %s", i, display_name);
+        if ((int)i == local_status.location_index) {
+            printf(" *");
         }
+        if (has_target && (int)i == target_index) {
+            printf(" locked");
+        }
+        printf("\n");
     }
 
     return 0;
 }
 
 int lockdockd_cmd_relocate(const char *display_arg) {
-    CGDirectDisplayID display_id = lockdockd_resolve_display_arg(display_arg);
-    CGRect bounds;
-    LockDockdDockOrientation orientation;
-    CGPoint old_position;
-    bool cursor_locked = false;
-    CGEventSourceRef source;
-    LockDockdSafeSegment safe_segment;
-    CGPoint approach = CGPointZero;
-    CGPoint edge = CGPointZero;
+    char request[LOCKDOCKD_IPC_MAX_MESSAGE];
 
-    if (display_id == 0) {
-        fprintf(stderr,
-                "Cannot resolve display '%s'. Use index or display ID from 'list'\n",
-                display_arg);
+    if (snprintf(request, sizeof(request), "relocate %s", display_arg) >=
+        (int)sizeof(request)) {
+        fprintf(stderr, "Display argument is too long\n");
         return 1;
     }
 
-    bounds = CGDisplayBounds(display_id);
-    if (bounds.size.width == 0 || bounds.size.height == 0) {
-        fprintf(stderr, "Display %u not found or has zero size\n", display_id);
-        return 1;
-    }
-
-    printf("Relocating dock to display %u (%.0fx%.0f)\n", display_id,
-           bounds.size.width, bounds.size.height);
-
-    orientation = lockdockd_get_dock_orientation();
-    printf("Dock orientation: %s\n", lockdockd_orientation_name(orientation));
-
-    old_position = lockdockd_current_mouse_location();
-    printf("Current cursor: (%.0f, %.0f)\n", old_position.x, old_position.y);
-
-    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-    if (source != NULL) {
-        CGEventSourceSetLocalEventsSuppressionInterval(source, 0.0);
-    }
-
-    cursor_locked = lockdockd_set_cursor_association(false);
-    if (!cursor_locked) {
-        fprintf(stderr,
-                "Warning: failed to temporarily lock cursor movement during "
-                "relocation\n");
-    }
-
-    safe_segment = lockdockd_find_safe_edge_segment(display_id, orientation);
-    printf("Safe edge segment: %.0f..%.0f (width=%.0f, center=%.0f)\n",
-           safe_segment.start, safe_segment.end, safe_segment.width,
-           safe_segment.center);
-
-    switch (orientation) {
-        case LOCKDOCKD_ORIENT_BOTTOM: {
-            CGFloat edge_y = bounds.origin.y + bounds.size.height;
-            CGFloat trigger_x = safe_segment.center;
-
-            approach = CGPointMake(trigger_x, edge_y - 50.0);
-            edge = CGPointMake(trigger_x, edge_y - 1.0);
-            break;
-        }
-
-        case LOCKDOCKD_ORIENT_LEFT: {
-            CGFloat edge_x = bounds.origin.x;
-            CGFloat trigger_y = safe_segment.center;
-
-            approach = CGPointMake(edge_x + 50.0, trigger_y);
-            edge = CGPointMake(edge_x + 1.0, trigger_y);
-            break;
-        }
-
-        case LOCKDOCKD_ORIENT_RIGHT: {
-            CGFloat edge_x = bounds.origin.x + bounds.size.width;
-            CGFloat trigger_y = safe_segment.center;
-
-            approach = CGPointMake(edge_x - 50.0, trigger_y);
-            edge = CGPointMake(edge_x - 1.0, trigger_y);
-            break;
-        }
-    }
-
-    CGWarpMouseCursorPosition(approach);
-    lockdockd_post_move_event(source, approach);
-    usleep(30 * 1000);
-
-    lockdockd_smooth_move(source, approach, edge, 10, 15 * 1000);
-
-    lockdockd_wait_for_dock_relocation(source, edge, orientation, display_id);
-
-    if (source != NULL) {
-        CFRelease(source);
-    }
-
-    CGWarpMouseCursorPosition(old_position);
-    if (cursor_locked) {
-        lockdockd_set_cursor_association(true);
-    }
-
-    {
-        CGDirectDisplayID new_display = lockdockd_get_dock_display();
-
-        if (new_display == display_id) {
-            printf("Dock successfully moved to display %u\n", display_id);
-        } else if (new_display != 0) {
-            printf("Dock is on display %u (expected %u)\n", new_display, display_id);
-        } else {
-            printf("Could not determine current Dock display");
-            if (!lockdockd_is_accessibility_trusted()) {
-                printf(" (Accessibility permission is not granted)\n");
-            } else {
-                printf("\n");
-            }
-        }
-    }
-
-    return 0;
+    return lockdockd_print_daemon_response(request);
 }
 
 int lockdockd_cmd_lock(const char *display_arg) {
-    CGDirectDisplayID display_id = lockdockd_resolve_display_arg(display_arg);
-    CGRect bounds;
-    CGEventMask mask;
-    CFMachPortRef tap;
-    CFRunLoopSourceRef source;
+    char request[LOCKDOCKD_IPC_MAX_MESSAGE];
 
-    if (display_id == 0) {
-        fprintf(stderr,
-                "Cannot resolve display '%s'. Use index or display ID from 'list'\n",
-                display_arg);
+    if (snprintf(request, sizeof(request), "lock %s", display_arg) >=
+        (int)sizeof(request)) {
+        fprintf(stderr, "Display argument is too long\n");
         return 1;
     }
 
-    bounds = CGDisplayBounds(display_id);
-    if (bounds.size.width == 0 || bounds.size.height == 0) {
-        fprintf(stderr, "Display %u not found\n", display_id);
-        return 1;
-    }
+    return lockdockd_print_daemon_response(request);
+}
 
-    g_locked_display = display_id;
-    g_locker_running = 1;
-
-    printf("Locking Dock to display %u ", display_id);
-    lockdockd_print_display_name(display_id);
-    printf(" (%.0fx%.0f)\n", bounds.size.width, bounds.size.height);
-    printf("Edge zone: %.0fpx. Press Ctrl+C to stop.\n", g_lock_edge_zone);
-
-    signal(SIGINT, lockdockd_signal_handler);
-    signal(SIGTERM, lockdockd_signal_handler);
-
-    mask = CGEventMaskBit(kCGEventMouseMoved) |
-           CGEventMaskBit(kCGEventLeftMouseDragged) |
-           CGEventMaskBit(kCGEventRightMouseDragged) |
-           CGEventMaskBit(kCGEventOtherMouseDragged);
-
-    tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
-                           kCGEventTapOptionDefault, mask,
-                           lockdockd_locker_event_callback, NULL);
-    if (tap == NULL) {
-        fprintf(stderr, "Failed to create event tap.\n");
-        fprintf(stderr, "Grant Accessibility permission in System Settings\n");
-        return 1;
-    }
-
-    source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0);
-    CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
-    CGEventTapEnable(tap, true);
-
-    printf("Event tap active. Locking is on.\n");
-
-    while (g_locker_running) {
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, true);
-    }
-
-    printf("\nStopping lock. Restoring normal behavior.\n");
-
-    CGEventTapEnable(tap, false);
-    CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
-    CFRelease(source);
-    CFRelease(tap);
-
-    return 0;
+int lockdockd_cmd_unlock(void) {
+    return lockdockd_print_daemon_response("unlock");
 }
 
 void lockdockd_print_usage(const char *prog) {
     printf("Usage:\n");
-    printf("  %s list                     List all displays\n", prog);
-    printf(
-        "  %s relocate <display-id>    Move Dock to a display (via safe edge "
-        "zone)\n",
-        prog);
-    printf("  %s lock <display-id>        Lock Dock to a display (block edge\n",
+    printf("  %s                          Start the foreground daemon\n", prog);
+    printf("  %s status                   Print daemon status JSON\n", prog);
+    printf("  %s list                     List all displays via daemon status\n",
            prog);
-    printf("                              pressure on other displays)\n");
+    printf("  %s relocate <display-id>    Move Dock to a display\n", prog);
+    printf("  %s lock <display-id>        Lock Dock to a display\n", prog);
+    printf("  %s unlock                   Clear the current Dock lock\n", prog);
 }

@@ -11,11 +11,14 @@ int main(int argc, char **argv) {
     const char *command;
 
     if (argc < 2) {
-        lockdockd_print_usage(argv[0]);
-        return 0;
+        return lockdockd_cmd_daemon();
     }
 
     command = argv[1];
+
+    if (strcmp(command, "status") == 0) {
+        return lockdockd_cmd_status();
+    }
 
     if (strcmp(command, "list") == 0) {
         return lockdockd_cmd_list();
@@ -37,6 +40,10 @@ int main(int argc, char **argv) {
         }
 
         return lockdockd_cmd_lock(argv[2]);
+    }
+
+    if (strcmp(command, "unlock") == 0) {
+        return lockdockd_cmd_unlock();
     }
 
     if (strcmp(command, "help") == 0 || strcmp(command, "-h") == 0 ||
