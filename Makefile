@@ -7,7 +7,7 @@ OBJS = \
 	$(SRC_DIR)/lockdockd_display.o \
 	$(SRC_DIR)/lockdockd_objc_bridge.o
 
-OPTFLAGS ?= -O2
+OPTFLAGS ?= -O2 -flto
 CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" $(OPTFLAGS)
 OBJCFLAGS = -fobjc-arc $(OPTFLAGS)
 FRAMEWORKS = \
