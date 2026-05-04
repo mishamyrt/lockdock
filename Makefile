@@ -1,3 +1,4 @@
+VERSION = 0.1.0
 TARGET = lockdockd
 SRC_DIR = src
 OBJS = \
@@ -7,7 +8,7 @@ OBJS = \
 	$(SRC_DIR)/lockdockd_objc_bridge.o
 
 OPTFLAGS ?= -O2
-CFLAGS = -std=c11 -Wall -Wextra $(OPTFLAGS)
+CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" $(OPTFLAGS)
 OBJCFLAGS = -fobjc-arc $(OPTFLAGS)
 FRAMEWORKS = \
 	-framework AppKit \

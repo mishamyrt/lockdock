@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifndef APP_VERSION
+#define APP_VERSION "dev"
+#endif
+
 int main(int argc, char **argv) {
     const char *command;
 
@@ -42,6 +46,11 @@ int main(int argc, char **argv) {
     if (strcmp(command, "help") == 0 || strcmp(command, "-h") == 0 ||
         strcmp(command, "--help") == 0) {
         lockdockd_print_usage(argv[0]);
+        return 0;
+    }
+
+    if (strcmp(command, "version") == 0) {
+        printf("lockdockd %s\n", APP_VERSION);
         return 0;
     }
 
