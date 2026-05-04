@@ -19,10 +19,6 @@ typedef struct {
 bool lockdockd_copy_display_label(CGDirectDisplayID display_id,
                                   char *buffer,
                                   size_t buffer_size);
-bool lockdockd_resolve_display_token(const char *display_arg,
-                                     CGDirectDisplayID *display_id_out,
-                                     char *error,
-                                     size_t error_size);
 bool lockdockd_query_status(LockDockdStatus *status, char *error, size_t error_size);
 int lockdockd_status_index_for_display(const LockDockdStatus *status,
                                        CGDirectDisplayID display_id);

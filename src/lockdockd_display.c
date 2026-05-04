@@ -1,7 +1,6 @@
 #include "lockdockd_display.h"
 
 #include <math.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define LOCKDOCKD_MAX_OVERLAPS 64
@@ -34,41 +33,6 @@ int lockdockd_find_display_index(CGDirectDisplayID display_id) {
     }
 
     return -1;
-}
-
-CGDirectDisplayID lockdockd_resolve_display_arg(const char *arg) {
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
-    const char *id_arg = NULL;
-    char *endptr = NULL;
-    unsigned long val;
-
-    if (arg == NULL) {
-        return (CGDirectDisplayID)0;
-    }
-
-    if (strncmp(arg, "id:", 3) == 0) {
-        id_arg = arg + 3;
-    }
-
-    val = strtoul(id_arg != NULL ? id_arg : arg, &endptr, 0);
-
-    if (endptr != (id_arg != NULL ? id_arg : arg) && *endptr == '\0') {
-        CGDirectDisplayID requested = (CGDirectDisplayID)val;
-
-        // Bare numeric arguments follow the indices shown by `lockdockd list`.
-        if (id_arg == NULL && val < count) {
-            return displays[val];
-        }
-
-        for (uint32_t i = 0; i < count; i++) {
-            if (displays[i] == requested) {
-                return requested;
-            }
-        }
-    }
-
-    return (CGDirectDisplayID)0;
 }
 
 LockDockdSafeSegment lockdockd_find_safe_edge_segment(

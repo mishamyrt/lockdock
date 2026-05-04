@@ -59,33 +59,6 @@ static bool lockdockd_validate_display(CGDirectDisplayID display_id,
     return true;
 }
 
-bool lockdockd_resolve_display_token(const char *display_arg,
-                                     CGDirectDisplayID *display_id_out,
-                                     char *error,
-                                     size_t error_size) {
-    CGDirectDisplayID display_id = lockdockd_resolve_display_arg(display_arg);
-
-    if (display_id_out == NULL) {
-        lockdockd_set_error(error, error_size, "Internal error");
-        return false;
-    }
-
-    if (display_id == 0) {
-        snprintf(error, error_size,
-                 "Cannot resolve display '%s'. Use an index from 'list' or a raw "
-                 "display ID via 'id:<n>'",
-                 display_arg == NULL ? "" : display_arg);
-        return false;
-    }
-
-    if (!lockdockd_validate_display(display_id, error, error_size)) {
-        return false;
-    }
-
-    *display_id_out = display_id;
-    return true;
-}
-
 bool lockdockd_query_status(LockDockdStatus *status,
                             char *error,
                             size_t error_size) {

@@ -16,36 +16,6 @@ int main(int argc, char **argv) {
 
     command = argv[1];
 
-    if (strcmp(command, "status") == 0) {
-        return lockdockd_cmd_status();
-    }
-
-    if (strcmp(command, "list") == 0) {
-        return lockdockd_cmd_list();
-    }
-
-    if (strcmp(command, "relocate") == 0) {
-        if (argc < 3) {
-            fprintf(stderr, "Usage: %s relocate <display>\n", argv[0]);
-            return 1;
-        }
-
-        return lockdockd_cmd_relocate(argv[2]);
-    }
-
-    if (strcmp(command, "lock") == 0) {
-        if (argc < 3) {
-            fprintf(stderr, "Usage: %s lock <display>\n", argv[0]);
-            return 1;
-        }
-
-        return lockdockd_cmd_lock(argv[2]);
-    }
-
-    if (strcmp(command, "unlock") == 0) {
-        return lockdockd_cmd_unlock();
-    }
-
     if (strcmp(command, "help") == 0 || strcmp(command, "-h") == 0 ||
         strcmp(command, "--help") == 0) {
         lockdockd_print_usage(argv[0]);

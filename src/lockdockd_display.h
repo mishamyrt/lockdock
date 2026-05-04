@@ -21,7 +21,6 @@ typedef enum {
 uint32_t lockdockd_get_active_displays(CGDirectDisplayID *displays,
                                        uint32_t max_displays);
 int lockdockd_find_display_index(CGDirectDisplayID display_id);
-CGDirectDisplayID lockdockd_resolve_display_arg(const char *arg);
 LockDockdSafeSegment lockdockd_find_safe_edge_segment(CGDirectDisplayID target_id,
                                                       LockDockdDockOrientation edge);
 CGDirectDisplayID lockdockd_find_display_at_point(CGPoint point);

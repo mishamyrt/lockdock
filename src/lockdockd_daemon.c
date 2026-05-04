@@ -4,6 +4,8 @@
 #include "lockdockd_locker.h"
 #include "lockdockd_runtime.h"
 
+#include "../thirdparty/json_tokenizer.h"
+
 #include <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
 #include <limits.h>
@@ -21,16 +23,33 @@
 
 static volatile sig_atomic_t g_daemon_running = 1;
 
+typedef enum {
+    LOCKDOCKD_REQUEST_NONE = 0,
+    LOCKDOCKD_REQUEST_GET_STATE,
+    LOCKDOCKD_REQUEST_SET_STATE,
+    LOCKDOCKD_REQUEST_UNLOCK
+} LockDockdRequestCommand;
+
+typedef struct {
+    LockDockdRequestCommand command;
+    bool has_target;
+    int target;
+} LockDockdRequest;
+
 static void lockdockd_signal_handler(int signal_number) {
     if (signal_number == SIGINT || signal_number == SIGTERM) {
         g_daemon_running = 0;
     }
 }
 
-static void lockdockd_append_error(char *buffer,
-                                   size_t buffer_size,
-                                   const char *message) {
-    snprintf(buffer, buffer_size, "{\"success\":false,\"error\":\"%s\"}", message);
+static void lockdockd_set_error(char *buffer,
+                                size_t buffer_size,
+                                const char *message) {
+    if (buffer == NULL || buffer_size == 0) {
+        return;
+    }
+
+    snprintf(buffer, buffer_size, "%s", message);
 }
 
 static bool lockdockd_append_bytes(char *buffer,
@@ -123,73 +142,14 @@ static void lockdockd_json_error_response(char *buffer,
     size_t used = 0;
 
     if (!lockdockd_append_bytes(buffer, buffer_size, &used,
-                                "{\"success\":false,\"error\":",
-                                strlen("{\"success\":false,\"error\":")) ||
+                                "{\"success\":false,\"reason\":",
+                                strlen("{\"success\":false,\"reason\":")) ||
         !lockdockd_append_json_string(buffer, buffer_size, &used, message) ||
         !lockdockd_append_bytes(buffer, buffer_size, &used, "}", 1)) {
-        lockdockd_append_error(buffer, buffer_size, "Internal error");
+        snprintf(buffer, buffer_size,
+                 "{\"success\":false,\"reason\":\"Internal "
+                 "error\"}");
     }
-}
-
-static bool lockdockd_build_status_response(char *buffer,
-                                            size_t buffer_size,
-                                            char *error,
-                                            size_t error_size) {
-    LockDockdStatus status;
-    size_t used = 0;
-    CGDirectDisplayID target_display = lockdockd_locker_get_target();
-    int target_index = -1;
-
-    if (!lockdockd_query_status(&status, error, error_size)) {
-        return false;
-    }
-
-    if (target_display != 0) {
-        target_index = lockdockd_status_index_for_display(&status, target_display);
-    }
-
-    if (!lockdockd_append_bytes(buffer, buffer_size, &used, "{\"displays\":[", 13)) {
-        snprintf(error, error_size, "Status response buffer is too small");
-        return false;
-    }
-
-    for (uint32_t i = 0; i < status.display_count; i++) {
-        char display_name[LOCKDOCKD_DISPLAY_NAME_BUFFER_SIZE];
-
-        lockdockd_copy_display_label(status.displays[i], display_name,
-                                     sizeof(display_name));
-
-        if (i > 0 && !lockdockd_append_bytes(buffer, buffer_size, &used, ",", 1)) {
-            snprintf(error, error_size, "Status response buffer is too small");
-            return false;
-        }
-
-        if (!lockdockd_append_json_string(buffer, buffer_size, &used,
-                                          display_name)) {
-            snprintf(error, error_size, "Status response buffer is too small");
-            return false;
-        }
-    }
-
-    if (!lockdockd_append_format(buffer, buffer_size, &used, "],\"location\":%d",
-                                 status.location_index)) {
-        snprintf(error, error_size, "Status response buffer is too small");
-        return false;
-    }
-
-    if (target_index >= 0 &&
-        !lockdockd_append_format(buffer, buffer_size, &used, ",\"target\":%d",
-                                 target_index)) {
-        snprintf(error, error_size, "Status response buffer is too small");
-        return false;
-    }
-
-    if (!lockdockd_append_bytes(buffer, buffer_size, &used, "}", 1)) {
-        snprintf(error, error_size, "Status response buffer is too small");
-        return false;
-    }
-
-    return true;
 }
 
 static void lockdockd_success_response(char *buffer, size_t buffer_size) {
@@ -211,115 +171,442 @@ static void lockdockd_trim_request(char *request) {
     }
 }
 
-static bool lockdockd_parse_request(char *request,
-                                    char **command_out,
-                                    char **arg_out) {
-    char *cursor = request;
-    char *space;
+static bool lockdockd_parse_target_value(json_token_t token,
+                                         const char *value,
+                                         int *target_out,
+                                         char *error,
+                                         size_t error_size) {
+    char *endptr = NULL;
 
-    while (*cursor == ' ' || *cursor == '\t') {
-        cursor++;
-    }
+    if (token == JSON_INT64) {
+        long long parsed;
 
-    if (*cursor == '\0') {
-        return false;
-    }
+        if (value == NULL || target_out == NULL) {
+            lockdockd_set_error(error, error_size, "Internal error");
+            return false;
+        }
 
-    space = strpbrk(cursor, " \t");
-    if (space == NULL) {
-        *command_out = cursor;
-        *arg_out = NULL;
+        parsed = strtoll(value, &endptr, 10);
+        if (endptr == value || *endptr != '\0') {
+            lockdockd_set_error(error, error_size,
+                                "Field 'target' must be an integer");
+            return false;
+        }
+
+        if (parsed < 0 || parsed > INT_MAX) {
+            lockdockd_set_error(
+                error, error_size,
+                "Field 'target' must be a non-negative display index");
+            return false;
+        }
+
+        *target_out = (int)parsed;
         return true;
     }
 
-    *space = '\0';
-    space++;
-    while (*space == ' ' || *space == '\t') {
-        space++;
+    if (token == JSON_UINT64) {
+        unsigned long long parsed;
+
+        if (value == NULL || target_out == NULL) {
+            lockdockd_set_error(error, error_size, "Internal error");
+            return false;
+        }
+
+        parsed = strtoull(value, &endptr, 10);
+        if (endptr == value || *endptr != '\0') {
+            lockdockd_set_error(error, error_size,
+                                "Field 'target' must be an integer");
+            return false;
+        }
+
+        if (parsed > INT_MAX) {
+            lockdockd_set_error(
+                error, error_size,
+                "Field 'target' must be a non-negative display index");
+            return false;
+        }
+
+        *target_out = (int)parsed;
+        return true;
     }
 
-    *command_out = cursor;
-    *arg_out = *space == '\0' ? NULL : space;
+    lockdockd_set_error(error, error_size, "Field 'target' must be an integer");
+    return false;
+}
+
+static bool lockdockd_parse_request_field(const char *name,
+                                          json_token_t token,
+                                          json_t *json,
+                                          LockDockdRequest *request,
+                                          char *error,
+                                          size_t error_size) {
+    const char *value = json_get_value(json);
+
+    if (name == NULL || request == NULL) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    if (strcmp(name, "cmd") == 0) {
+        if (request->command != LOCKDOCKD_REQUEST_NONE) {
+            lockdockd_set_error(error, error_size,
+                                "Field 'cmd' must be specified once");
+            return false;
+        }
+
+        if (token != JSON_STRING || value == NULL) {
+            lockdockd_set_error(error, error_size, "Field 'cmd' must be a string");
+            return false;
+        }
+
+        if (strcmp(value, "get_state") == 0) {
+            request->command = LOCKDOCKD_REQUEST_GET_STATE;
+            return true;
+        }
+
+        if (strcmp(value, "set_state") == 0) {
+            request->command = LOCKDOCKD_REQUEST_SET_STATE;
+            return true;
+        }
+
+        if (strcmp(value, "unlock") == 0) {
+            request->command = LOCKDOCKD_REQUEST_UNLOCK;
+            return true;
+        }
+
+        lockdockd_set_error(error, error_size, "Unknown command");
+        return false;
+    }
+
+    if (strcmp(name, "target") == 0) {
+        if (request->has_target) {
+            lockdockd_set_error(error, error_size,
+                                "Field 'target' must be specified once");
+            return false;
+        }
+
+        if (!lockdockd_parse_target_value(token, value, &request->target, error,
+                                          error_size)) {
+            return false;
+        }
+
+        request->has_target = true;
+        return true;
+    }
+
+    snprintf(error, error_size, "Unknown field '%s'", name);
+    return false;
+}
+
+static bool lockdockd_parse_request_json(const char *request_json,
+                                         LockDockdRequest *request_out,
+                                         char *error,
+                                         size_t error_size) {
+    char path[] = "/tmp/lockdockd-ipc-XXXXXX";
+    int fd = -1;
+    json_t *json = NULL;
+    json_token_t token;
+    char current_name[64];
+    bool saw_root = false;
+    int depth = 0;
+
+    if (request_json == NULL || request_out == NULL) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    memset(request_out, 0, sizeof(*request_out));
+    memset(current_name, 0, sizeof(current_name));
+
+    fd = mkstemp(path);
+    if (fd < 0) {
+        snprintf(error, error_size, "Failed to create IPC parser file: %s",
+                 strerror(errno));
+        return false;
+    }
+
+    {
+        size_t length = strlen(request_json);
+        size_t written_total = 0;
+
+        while (written_total < length) {
+            ssize_t written =
+                write(fd, request_json + written_total, length - written_total);
+
+            if (written < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+
+                snprintf(error, error_size, "Failed to buffer IPC request: %s",
+                         strerror(errno));
+                close(fd);
+                unlink(path);
+                return false;
+            }
+
+            written_total += (size_t)written;
+        }
+    }
+
+    close(fd);
+    fd = -1;
+
+    json = json_fopen(path);
+    unlink(path);
+    if (json == NULL) {
+        lockdockd_set_error(error, error_size, "Failed to open JSON request");
+        return false;
+    }
+
+    while ((token = json_next_token(json)) != JSON_END_DOCUMENT) {
+        if (token == JSON_ERROR) {
+            snprintf(
+                error, error_size, "Invalid JSON request: %s",
+                json_get_error(json) == NULL ? "parse error" : json_get_error(json));
+            json_close(json);
+            return false;
+        }
+
+        switch (token) {
+            case JSON_START_OBJECT:
+                if (saw_root || depth != 0 || current_name[0] != '\0') {
+                    lockdockd_set_error(error, error_size,
+                                        "Request must be a single flat JSON object");
+                    json_close(json);
+                    return false;
+                }
+
+                saw_root = true;
+                depth = 1;
+                break;
+
+            case JSON_END_OBJECT:
+                if (depth != 1 || current_name[0] != '\0') {
+                    lockdockd_set_error(error, error_size,
+                                        "Request must be a single flat JSON object");
+                    json_close(json);
+                    return false;
+                }
+
+                depth = 0;
+                break;
+
+            case JSON_NAME:
+                if (!saw_root || depth != 1 || current_name[0] != '\0') {
+                    lockdockd_set_error(error, error_size,
+                                        "Request must be a single flat JSON object");
+                    json_close(json);
+                    return false;
+                }
+
+                if (snprintf(
+                        current_name, sizeof(current_name), "%s",
+                        json_get_name(json) == NULL ? "" : json_get_name(json)) >=
+                    (int)sizeof(current_name)) {
+                    lockdockd_set_error(error, error_size,
+                                        "Request field name is too long");
+                    json_close(json);
+                    return false;
+                }
+                break;
+
+            case JSON_STRING:
+            case JSON_INT64:
+            case JSON_UINT64:
+                if (!saw_root || depth != 1 || current_name[0] == '\0') {
+                    lockdockd_set_error(error, error_size,
+                                        "Request must be a single flat JSON object");
+                    json_close(json);
+                    return false;
+                }
+
+                if (!lockdockd_parse_request_field(current_name, token, json,
+                                                   request_out, error, error_size)) {
+                    json_close(json);
+                    return false;
+                }
+
+                current_name[0] = '\0';
+                break;
+
+            default:
+                lockdockd_set_error(error, error_size,
+                                    "Request must be a single flat JSON object");
+                json_close(json);
+                return false;
+        }
+    }
+
+    json_close(json);
+
+    if (!saw_root || depth != 0) {
+        lockdockd_set_error(error, error_size,
+                            "Request must be a single JSON object");
+        return false;
+    }
+
+    if (current_name[0] != '\0') {
+        lockdockd_set_error(error, error_size, "Request field is missing a value");
+        return false;
+    }
+
+    if (request_out->command == LOCKDOCKD_REQUEST_NONE) {
+        lockdockd_set_error(error, error_size, "Missing required field 'cmd'");
+        return false;
+    }
+
+    if (request_out->command == LOCKDOCKD_REQUEST_SET_STATE) {
+        if (!request_out->has_target) {
+            lockdockd_set_error(error, error_size,
+                                "Missing required field 'target'");
+            return false;
+        }
+    } else if (request_out->has_target) {
+        lockdockd_set_error(error, error_size,
+                            "Field 'target' is only valid for command 'set_state'");
+        return false;
+    }
+
     return true;
 }
 
-static bool lockdockd_request_has_extra_args(char *arg) {
-    return arg != NULL && strpbrk(arg, " \t") != NULL;
+static bool lockdockd_build_state_response(char *buffer,
+                                           size_t buffer_size,
+                                           char *error,
+                                           size_t error_size) {
+    LockDockdStatus status;
+    size_t used = 0;
+    CGDirectDisplayID target_display = lockdockd_locker_get_target();
+    int target_index = -1;
+
+    if (!lockdockd_query_status(&status, error, error_size)) {
+        return false;
+    }
+
+    if (target_display != 0) {
+        target_index = lockdockd_status_index_for_display(&status, target_display);
+    }
+
+    if (!lockdockd_append_bytes(buffer, buffer_size, &used, "{\"displays\":[", 13)) {
+        snprintf(error, error_size, "State response buffer is too small");
+        return false;
+    }
+
+    for (uint32_t i = 0; i < status.display_count; i++) {
+        char display_name[LOCKDOCKD_DISPLAY_NAME_BUFFER_SIZE];
+
+        lockdockd_copy_display_label(status.displays[i], display_name,
+                                     sizeof(display_name));
+
+        if (i > 0 && !lockdockd_append_bytes(buffer, buffer_size, &used, ",", 1)) {
+            snprintf(error, error_size, "State response buffer is too small");
+            return false;
+        }
+
+        if (!lockdockd_append_json_string(buffer, buffer_size, &used,
+                                          display_name)) {
+            snprintf(error, error_size, "State response buffer is too small");
+            return false;
+        }
+    }
+
+    if (!lockdockd_append_format(buffer, buffer_size, &used, "],\"location\":%d",
+                                 status.location_index)) {
+        snprintf(error, error_size, "State response buffer is too small");
+        return false;
+    }
+
+    if (target_index >= 0 &&
+        !lockdockd_append_format(buffer, buffer_size, &used, ",\"target\":%d",
+                                 target_index)) {
+        snprintf(error, error_size, "State response buffer is too small");
+        return false;
+    }
+
+    if (!lockdockd_append_bytes(buffer, buffer_size, &used, "}", 1)) {
+        snprintf(error, error_size, "State response buffer is too small");
+        return false;
+    }
+
+    return true;
 }
 
-static void lockdockd_handle_request(const char *command,
-                                     const char *arg,
+static bool lockdockd_resolve_target_display(const LockDockdStatus *status,
+                                             int target_index,
+                                             CGDirectDisplayID *display_id_out,
+                                             char *error,
+                                             size_t error_size) {
+    if (status == NULL || display_id_out == NULL) {
+        lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    if (target_index < 0 || target_index >= (int)status->display_count) {
+        snprintf(error, error_size, "Display index %d is out of range",
+                 target_index);
+        return false;
+    }
+
+    *display_id_out = status->displays[target_index];
+    return true;
+}
+
+static void lockdockd_handle_request(const LockDockdRequest *request,
                                      char *response,
                                      size_t response_size) {
     char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
+    LockDockdStatus status;
     CGDirectDisplayID display_id = 0;
-    CGDirectDisplayID target_display = lockdockd_locker_get_target();
 
-    if (strcmp(command, "status") == 0) {
-        if (arg != NULL) {
-            lockdockd_json_error_response(response, response_size,
-                                          "status does not take arguments");
-            return;
-        }
+    if (request == NULL) {
+        lockdockd_json_error_response(response, response_size, "Internal error");
+        return;
+    }
 
-        if (!lockdockd_build_status_response(response, response_size, error,
-                                             sizeof(error))) {
+    if (request->command == LOCKDOCKD_REQUEST_GET_STATE) {
+        if (!lockdockd_build_state_response(response, response_size, error,
+                                            sizeof(error))) {
             lockdockd_json_error_response(response, response_size, error);
         }
         return;
     }
 
-    if (strcmp(command, "unlock") == 0) {
-        if (arg != NULL) {
-            lockdockd_json_error_response(response, response_size,
-                                          "unlock does not take arguments");
-            return;
-        }
-
+    if (request->command == LOCKDOCKD_REQUEST_UNLOCK) {
         lockdockd_locker_clear_target();
         lockdockd_success_response(response, response_size);
         return;
     }
 
-    if (arg == NULL || lockdockd_request_has_extra_args((char *)arg)) {
-        lockdockd_json_error_response(
-            response, response_size,
-            "Command requires exactly one display argument");
+    if (request->command != LOCKDOCKD_REQUEST_SET_STATE) {
+        lockdockd_json_error_response(response, response_size, "Unknown command");
         return;
     }
 
-    if (!lockdockd_resolve_display_token(arg, &display_id, error, sizeof(error))) {
+    if (!lockdockd_query_status(&status, error, sizeof(error))) {
         lockdockd_json_error_response(response, response_size, error);
         return;
     }
 
-    if (strcmp(command, "lock") == 0) {
-        if (!lockdockd_locker_set_target(display_id, error, sizeof(error))) {
-            lockdockd_json_error_response(response, response_size, error);
-            return;
-        }
-
-        lockdockd_success_response(response, response_size);
+    if (!lockdockd_resolve_target_display(&status, request->target, &display_id,
+                                          error, sizeof(error))) {
+        lockdockd_json_error_response(response, response_size, error);
         return;
     }
 
-    if (strcmp(command, "relocate") == 0) {
-        if (target_display != 0 && target_display != display_id &&
-            !lockdockd_locker_set_target(display_id, error, sizeof(error))) {
-            lockdockd_json_error_response(response, response_size, error);
-            return;
-        }
-
+    if (status.location_index != request->target) {
         if (!lockdockd_relocate_display(display_id, error, sizeof(error))) {
             lockdockd_json_error_response(response, response_size, error);
             return;
         }
+    }
 
-        lockdockd_success_response(response, response_size);
+    if (!lockdockd_locker_set_target(display_id, error, sizeof(error))) {
+        lockdockd_json_error_response(response, response_size, error);
         return;
     }
 
-    lockdockd_json_error_response(response, response_size, "Unknown command");
+    lockdockd_success_response(response, response_size);
 }
 
 static bool lockdockd_read_request(int fd,
@@ -330,7 +617,7 @@ static bool lockdockd_read_request(int fd,
     size_t used = 0;
 
     while (used + 1 < buffer_size) {
-        ssize_t nread = read(fd, buffer + used, 1);
+        ssize_t nread = read(fd, buffer + used, buffer_size - used - 1);
 
         if (nread < 0) {
             if (errno == EINTR) {
@@ -343,11 +630,6 @@ static bool lockdockd_read_request(int fd,
         }
 
         if (nread == 0) {
-            break;
-        }
-
-        if (buffer[used] == '\n') {
-            used++;
             break;
         }
 
@@ -366,6 +648,11 @@ static bool lockdockd_read_request(int fd,
 
     buffer[used] = '\0';
     lockdockd_trim_request(buffer);
+    if (buffer[0] == '\0') {
+        snprintf(error, error_size, "Client sent an empty request");
+        return false;
+    }
+
     return true;
 }
 
@@ -390,12 +677,6 @@ static bool lockdockd_write_response(int fd,
         }
 
         offset += (size_t)written;
-    }
-
-    if (write(fd, "\n", 1) < 0 && errno != EPIPE) {
-        snprintf(error, error_size, "Failed to finalize client response: %s",
-                 strerror(errno));
-        return false;
     }
 
     return true;
@@ -541,14 +822,14 @@ int lockdockd_run_daemon(void) {
                                             error, sizeof(error))) {
                     lockdockd_json_error_response(response, sizeof(response), error);
                 } else {
-                    char *command = NULL;
-                    char *arg = NULL;
+                    LockDockdRequest parsed_request;
 
-                    if (!lockdockd_parse_request(request, &command, &arg)) {
+                    if (!lockdockd_parse_request_json(request, &parsed_request,
+                                                      error, sizeof(error))) {
                         lockdockd_json_error_response(response, sizeof(response),
-                                                      "Invalid request");
+                                                      error);
                     } else {
-                        lockdockd_handle_request(command, arg, response,
+                        lockdockd_handle_request(&parsed_request, response,
                                                  sizeof(response));
                     }
                 }
