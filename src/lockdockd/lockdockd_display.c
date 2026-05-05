@@ -117,8 +117,7 @@ static void lockdockd_for_each_active_display(LockDockdActiveDisplayVisitor visi
     }
 }
 
-static int lockdockd_compare_overlaps(const void *left_ptr,
-                                      const void *right_ptr) {
+static int lockdockd_compare_overlaps(const void *left_ptr, const void *right_ptr) {
     const LockDockdOverlap *left = left_ptr;
     const LockDockdOverlap *right = right_ptr;
 
@@ -176,17 +175,15 @@ static bool lockdockd_find_display_identity_match(CGDirectDisplayID display_id,
         return true;
     }
 
-    if (search->identity->uuid[0] != '\0' &&
-        current_identity.uuid[0] != '\0' &&
+    if (search->identity->uuid[0] != '\0' && current_identity.uuid[0] != '\0' &&
         strcmp(current_identity.uuid, search->identity->uuid) == 0) {
         search->match = display_id;
         search->found_match = true;
         return false;
     }
 
-    if (!search->found_fallback_match &&
-        lockdockd_display_identity_fallback_matches(&current_identity,
-                                                    search->identity)) {
+    if (!search->found_fallback_match && lockdockd_display_identity_fallback_matches(
+                                             &current_identity, search->identity)) {
         search->fallback_match = display_id;
         search->found_fallback_match = true;
         return search->identity->uuid[0] != '\0';
@@ -334,8 +331,7 @@ int lockdockd_find_display_index(CGDirectDisplayID display_id) {
     search.display_id = display_id;
     search.index = -1;
 
-    lockdockd_for_each_active_display(lockdockd_find_display_index_match,
-                                      &search);
+    lockdockd_for_each_active_display(lockdockd_find_display_index_match, &search);
 
     return search.index;
 }

@@ -1,17 +1,23 @@
 VERSION = 0.1.0
-TARGET = lockdockd
+
 SRC_DIR = src
-OBJS = \
-	$(SRC_DIR)/main.o \
-	$(SRC_DIR)/lockdockd_daemon.o \
-	$(SRC_DIR)/lockdockd_display.o \
-	$(SRC_DIR)/lockdockd_ipc.o \
-	$(SRC_DIR)/lockdockd_launchagent.o \
-	$(SRC_DIR)/lockdockd_locker.o \
-	$(SRC_DIR)/lockdockd_platform.o \
-	$(SRC_DIR)/lockdockd_preferences.o \
-	$(SRC_DIR)/lockdockd_request.o \
-	$(SRC_DIR)/lockdockd_runtime.o
+BUILD_DIR = build
+
+DAEMON_SRC_DIR = $(SRC_DIR)/lockdockd
+DAEMON_BUILD_DIR = $(BUILD_DIR)/artifacts/lockdockd
+DAEMON_TARGET = $(BUILD_DIR)/lockdockd
+DAEMON_SRCS = \
+	$(DAEMON_SRC_DIR)/main.c \
+	$(DAEMON_SRC_DIR)/lockdockd_daemon.c \
+	$(DAEMON_SRC_DIR)/lockdockd_display.c \
+	$(DAEMON_SRC_DIR)/lockdockd_ipc.c \
+	$(DAEMON_SRC_DIR)/lockdockd_launchagent.c \
+	$(DAEMON_SRC_DIR)/lockdockd_locker.c \
+	$(DAEMON_SRC_DIR)/lockdockd_platform.c \
+	$(DAEMON_SRC_DIR)/lockdockd_preferences.c \
+	$(DAEMON_SRC_DIR)/lockdockd_request.c \
+	$(DAEMON_SRC_DIR)/lockdockd_runtime.c
+DAEMON_OBJS = $(patsubst $(DAEMON_SRC_DIR)/%.c,$(DAEMON_BUILD_DIR)/%.o,$(DAEMON_SRCS))
 
 OPTFLAGS ?= -O3 -march=native -flto
 CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" $(OPTFLAGS)
@@ -23,20 +29,22 @@ FRAMEWORKS = \
 
 .PHONY: all clean
 
-all: $(TARGET)
+all: $(DAEMON_TARGET)
 
-$(TARGET): $(OBJS)
-	clang $(FRAMEWORKS) -o $@ $(OBJS)
+$(DAEMON_TARGET): $(DAEMON_OBJS)
+	clang $(OPTFLAGS) -o $@ $(DAEMON_OBJS) $(FRAMEWORKS)
 
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
+$(DAEMON_BUILD_DIR)/%.o: $(DAEMON_SRC_DIR)/%.c | $(DAEMON_BUILD_DIR)
 	clang $(CFLAGS) -c -o $@ $<
 
+$(DAEMON_BUILD_DIR):
+	mkdir -p $(DAEMON_BUILD_DIR)
+
 clean:
-	rm -f $(TARGET)
-	rm -f $(SRC_DIR)/*.o
+	rm -rf $(BUILD_DIR)
 
 fmt:
 	find src/ \
-		-iname '*.h' \
-		-o -iname '*.c' \
+		\( -iname '*.h' -o -iname '*.c' \) \
+		-not -path "*/thirdparty/*" \
 		| xargs clang-format -i

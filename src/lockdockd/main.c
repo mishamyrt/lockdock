@@ -8,12 +8,11 @@
 #define APP_VERSION "dev"
 #endif
 
-
-int lockdockd_cmd_daemon(void) {
+static int cmd_daemon(void) {
     return lockdockd_run_daemon();
 }
 
-int lockdockd_cmd_enable(void) {
+static int cmd_enable(void) {
     char message[LOCKDOCKD_LAUNCHAGENT_MESSAGE_SIZE];
 
     if (!lockdockd_launchagent_enable(message, sizeof(message))) {
@@ -25,7 +24,7 @@ int lockdockd_cmd_enable(void) {
     return 0;
 }
 
-int lockdockd_cmd_disable(void) {
+static int cmd_disable(void) {
     char message[LOCKDOCKD_LAUNCHAGENT_MESSAGE_SIZE];
 
     if (!lockdockd_launchagent_disable(message, sizeof(message))) {
@@ -37,7 +36,7 @@ int lockdockd_cmd_disable(void) {
     return 0;
 }
 
-void lockdockd_print_usage(const char *prog) {
+static void print_usage(const char *prog) {
     printf("Usage:\n");
     printf("  %s                          Start the foreground daemon\n", prog);
     printf("  %s enable                   Install and start the LaunchAgent\n",
@@ -51,23 +50,23 @@ int main(int argc, char **argv) {
     const char *command;
 
     if (argc < 2) {
-        return lockdockd_cmd_daemon();
+        return cmd_daemon();
     }
 
     command = argv[1];
 
     if (strcmp(command, "help") == 0 || strcmp(command, "-h") == 0 ||
         strcmp(command, "--help") == 0) {
-        lockdockd_print_usage(argv[0]);
+        print_usage(argv[0]);
         return 0;
     }
 
     if (strcmp(command, "enable") == 0) {
-        return lockdockd_cmd_enable();
+        return cmd_enable();
     }
 
     if (strcmp(command, "disable") == 0) {
-        return lockdockd_cmd_disable();
+        return cmd_disable();
     }
 
     if (strcmp(command, "version") == 0) {
@@ -76,6 +75,6 @@ int main(int argc, char **argv) {
     }
 
     fprintf(stderr, "Unknown command: %s\n", command);
-    lockdockd_print_usage(argv[0]);
+    print_usage(argv[0]);
     return 1;
 }

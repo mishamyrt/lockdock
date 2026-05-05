@@ -1,2 +1,2 @@
-*.o
-lockdockd
+/build
+.DS_Store
