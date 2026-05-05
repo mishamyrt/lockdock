@@ -794,6 +794,7 @@ static bool lockdockd_apply_set_state(
     size_t error_size) {
     LockDockdStateSnapshot previous_state;
     bool restore_dock_display = false;
+    bool clear_existing_lock_for_relocation = false;
     char operation_error[LOCKDOCKD_ERROR_BUFFER_SIZE];
     char preference_rollback_error[LOCKDOCKD_ERROR_BUFFER_SIZE] = "";
     char runtime_rollback_error[LOCKDOCKD_ERROR_BUFFER_SIZE] = "";
@@ -810,6 +811,14 @@ static bool lockdockd_apply_set_state(
 
     restore_dock_display =
         previous_state.has_dock_display && previous_state.dock_display != display_id;
+    clear_existing_lock_for_relocation =
+        restore_dock_display && previous_state.locked_display != 0 &&
+        previous_state.locked_display != display_id;
+
+    if (clear_existing_lock_for_relocation) {
+        /* The current lock blocks the synthetic edge approach used for relocation. */
+        lockdockd_locker_clear_target();
+    }
 
     if (restore_dock_display &&
         !lockdockd_relocate_display(display_id, operation_error,
