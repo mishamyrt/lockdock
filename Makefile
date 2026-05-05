@@ -11,6 +11,7 @@ OBJS = \
 	$(SRC_DIR)/lockdockd_locker.o \
 	$(SRC_DIR)/lockdockd_platform.o \
 	$(SRC_DIR)/lockdockd_preferences.o \
+	$(SRC_DIR)/lockdockd_request.o \
 	$(SRC_DIR)/lockdockd_runtime.o
 
 OPTFLAGS ?= -O3 -march=native -flto
