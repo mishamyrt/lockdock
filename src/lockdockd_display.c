@@ -4,6 +4,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define LOCKDOCKD_MAX_OVERLAPS 64
@@ -12,6 +13,38 @@ typedef struct {
     CGFloat start;
     CGFloat end;
 } LockDockdOverlap;
+
+typedef bool (*LockDockdActiveDisplayVisitor)(CGDirectDisplayID display_id,
+                                              uint32_t index,
+                                              void *context);
+
+typedef struct {
+    const LockDockdDisplayIdentity *identity;
+    CGDirectDisplayID match;
+    CGDirectDisplayID fallback_match;
+    bool found_match;
+    bool found_fallback_match;
+} LockDockdIdentitySearchContext;
+
+typedef struct {
+    CGDirectDisplayID target_id;
+    LockDockdDockOrientation edge;
+    CGFloat edge_min;
+    CGFloat edge_max;
+    CGFloat edge_cross_pos;
+    LockDockdOverlap *overlaps;
+    int overlap_count;
+} LockDockdOverlapCollectionContext;
+
+typedef struct {
+    CGDirectDisplayID display_id;
+    int index;
+} LockDockdDisplayIndexContext;
+
+typedef struct {
+    CGPoint point;
+    CGDirectDisplayID display_id;
+} LockDockdPointSearchContext;
 
 bool lockdockd_display_identity_is_valid(const LockDockdDisplayIdentity *identity) {
     if (identity == NULL) {
@@ -66,46 +99,218 @@ static bool lockdockd_display_identity_fallback_matches(
            left->serial_number == right->serial_number;
 }
 
+static void lockdockd_for_each_active_display(LockDockdActiveDisplayVisitor visitor,
+                                              void *context) {
+    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
+    uint32_t count = 0;
+
+    if (visitor == NULL) {
+        return;
+    }
+
+    count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
+
+    for (uint32_t i = 0; i < count; i++) {
+        if (!visitor(displays[i], i, context)) {
+            break;
+        }
+    }
+}
+
+static int lockdockd_compare_overlaps(const void *left_ptr,
+                                      const void *right_ptr) {
+    const LockDockdOverlap *left = left_ptr;
+    const LockDockdOverlap *right = right_ptr;
+
+    if (left->start < right->start) {
+        return -1;
+    }
+
+    if (left->start > right->start) {
+        return 1;
+    }
+
+    if (left->end < right->end) {
+        return -1;
+    }
+
+    if (left->end > right->end) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void lockdockd_update_best_safe_segment(LockDockdSafeSegment *best,
+                                               CGFloat start,
+                                               CGFloat end) {
+    CGFloat width;
+
+    if (best == NULL || end <= start) {
+        return;
+    }
+
+    width = end - start;
+
+    if (width > best->width) {
+        best->start = start;
+        best->end = end;
+        best->width = width;
+        best->center = start + width / 2.0;
+    }
+}
+
+static bool lockdockd_find_display_identity_match(CGDirectDisplayID display_id,
+                                                  uint32_t index,
+                                                  void *context) {
+    LockDockdIdentitySearchContext *search = context;
+    LockDockdDisplayIdentity current_identity;
+
+    (void)index;
+
+    if (search == NULL || search->identity == NULL) {
+        return false;
+    }
+
+    if (!lockdockd_copy_display_identity(display_id, &current_identity)) {
+        return true;
+    }
+
+    if (search->identity->uuid[0] != '\0' &&
+        current_identity.uuid[0] != '\0' &&
+        strcmp(current_identity.uuid, search->identity->uuid) == 0) {
+        search->match = display_id;
+        search->found_match = true;
+        return false;
+    }
+
+    if (!search->found_fallback_match &&
+        lockdockd_display_identity_fallback_matches(&current_identity,
+                                                    search->identity)) {
+        search->fallback_match = display_id;
+        search->found_fallback_match = true;
+        return search->identity->uuid[0] != '\0';
+    }
+
+    return true;
+}
+
+static bool lockdockd_collect_display_overlap(CGDirectDisplayID display_id,
+                                              uint32_t index,
+                                              void *context) {
+    LockDockdOverlapCollectionContext *collection = context;
+    CGRect other;
+    CGFloat other_min_along;
+    CGFloat other_max_along;
+    CGFloat other_min_cross;
+    CGFloat other_max_cross;
+    CGFloat overlap_start;
+    CGFloat overlap_end;
+
+    (void)index;
+
+    if (collection == NULL) {
+        return false;
+    }
+
+    if (display_id == collection->target_id) {
+        return true;
+    }
+
+    other = CGDisplayBounds(display_id);
+
+    if (collection->edge == LOCKDOCKD_ORIENT_BOTTOM) {
+        other_min_along = other.origin.x;
+        other_max_along = other.origin.x + other.size.width;
+        other_min_cross = other.origin.y;
+        other_max_cross = other.origin.y + other.size.height;
+    } else {
+        other_min_along = other.origin.y;
+        other_max_along = other.origin.y + other.size.height;
+        other_min_cross = other.origin.x;
+        other_max_cross = other.origin.x + other.size.width;
+    }
+
+    if (other_max_cross < collection->edge_cross_pos - 1.0 ||
+        other_min_cross > collection->edge_cross_pos + 1.0) {
+        return true;
+    }
+
+    overlap_start = fmax(collection->edge_min, other_min_along);
+    overlap_end = fmin(collection->edge_max, other_max_along);
+
+    if (overlap_end > overlap_start && (overlap_end - overlap_start) > 2.0) {
+        collection->overlaps[collection->overlap_count].start = overlap_start;
+        collection->overlaps[collection->overlap_count].end = overlap_end;
+        collection->overlap_count++;
+    }
+
+    return collection->overlap_count < LOCKDOCKD_MAX_OVERLAPS;
+}
+
+static bool lockdockd_find_display_index_match(CGDirectDisplayID display_id,
+                                               uint32_t index,
+                                               void *context) {
+    LockDockdDisplayIndexContext *search = context;
+
+    if (search == NULL) {
+        return false;
+    }
+
+    if (display_id != search->display_id) {
+        return true;
+    }
+
+    search->index = (int)index;
+    return false;
+}
+
+static bool lockdockd_find_display_at_point_match(CGDirectDisplayID display_id,
+                                                  uint32_t index,
+                                                  void *context) {
+    LockDockdPointSearchContext *search = context;
+    CGRect bounds;
+
+    (void)index;
+
+    if (search == NULL) {
+        return false;
+    }
+
+    bounds = CGDisplayBounds(display_id);
+
+    if (search->point.x < bounds.origin.x ||
+        search->point.x >= bounds.origin.x + bounds.size.width ||
+        search->point.y < bounds.origin.y ||
+        search->point.y >= bounds.origin.y + bounds.size.height) {
+        return true;
+    }
+
+    search->display_id = display_id;
+    return false;
+}
+
 bool lockdockd_find_active_display_by_identity(
     const LockDockdDisplayIdentity *identity,
     CGDirectDisplayID *display_id_out) {
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = 0;
+    LockDockdIdentitySearchContext search = {0};
 
     if (!lockdockd_display_identity_is_valid(identity) || display_id_out == NULL) {
         return false;
     }
 
-    count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
+    search.identity = identity;
+    lockdockd_for_each_active_display(lockdockd_find_display_identity_match,
+                                      &search);
 
-    if (identity->uuid[0] != '\0') {
-        for (uint32_t i = 0; i < count; i++) {
-            LockDockdDisplayIdentity current_identity;
-
-            if (!lockdockd_copy_display_identity(displays[i], &current_identity)) {
-                continue;
-            }
-
-            if (current_identity.uuid[0] != '\0' &&
-                strcmp(current_identity.uuid, identity->uuid) == 0) {
-                *display_id_out = displays[i];
-                return true;
-            }
-        }
+    if (search.found_match) {
+        *display_id_out = search.match;
+        return true;
     }
 
-    for (uint32_t i = 0; i < count; i++) {
-        LockDockdDisplayIdentity current_identity;
-
-        if (!lockdockd_copy_display_identity(displays[i], &current_identity)) {
-            continue;
-        }
-
-        if (lockdockd_display_identity_fallback_matches(&current_identity,
-                                                        identity)) {
-            *display_id_out = displays[i];
-            return true;
-        }
+    if (search.found_fallback_match) {
+        *display_id_out = search.fallback_match;
+        return true;
     }
 
     return false;
@@ -124,29 +329,26 @@ uint32_t lockdockd_get_active_displays(CGDirectDisplayID *displays,
 }
 
 int lockdockd_find_display_index(CGDirectDisplayID display_id) {
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
+    LockDockdDisplayIndexContext search = {0};
 
-    for (uint32_t i = 0; i < count; i++) {
-        if (displays[i] == display_id) {
-            return (int)i;
-        }
-    }
+    search.display_id = display_id;
+    search.index = -1;
 
-    return -1;
+    lockdockd_for_each_active_display(lockdockd_find_display_index_match,
+                                      &search);
+
+    return search.index;
 }
 
 LockDockdSafeSegment lockdockd_find_safe_edge_segment(
     CGDirectDisplayID target_id,
     LockDockdDockOrientation edge) {
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
     CGRect target = CGDisplayBounds(target_id);
     CGFloat edge_min;
     CGFloat edge_max;
     CGFloat edge_cross_pos;
     LockDockdOverlap overlaps[LOCKDOCKD_MAX_OVERLAPS];
-    int overlap_count = 0;
+    LockDockdOverlapCollectionContext overlap_collection = {0};
     LockDockdSafeSegment best = {0, 0, 0, 0};
     CGFloat pos;
 
@@ -164,115 +366,42 @@ LockDockdSafeSegment lockdockd_find_safe_edge_segment(
         edge_cross_pos = target.origin.x + target.size.width;
     }
 
-    for (uint32_t i = 0; i < count; i++) {
-        CGRect other;
-        CGFloat other_min_along;
-        CGFloat other_max_along;
-        CGFloat other_min_cross;
-        CGFloat other_max_cross;
-        CGFloat overlap_start;
-        CGFloat overlap_end;
+    overlap_collection.target_id = target_id;
+    overlap_collection.edge = edge;
+    overlap_collection.edge_min = edge_min;
+    overlap_collection.edge_max = edge_max;
+    overlap_collection.edge_cross_pos = edge_cross_pos;
+    overlap_collection.overlaps = overlaps;
 
-        if (displays[i] == target_id) {
-            continue;
-        }
+    lockdockd_for_each_active_display(lockdockd_collect_display_overlap,
+                                      &overlap_collection);
 
-        other = CGDisplayBounds(displays[i]);
+    pos = edge_min;
 
-        if (edge == LOCKDOCKD_ORIENT_BOTTOM) {
-            other_min_along = other.origin.x;
-            other_max_along = other.origin.x + other.size.width;
-            other_min_cross = other.origin.y;
-            other_max_cross = other.origin.y + other.size.height;
-        } else {
-            other_min_along = other.origin.y;
-            other_max_along = other.origin.y + other.size.height;
-            other_min_cross = other.origin.x;
-            other_max_cross = other.origin.x + other.size.width;
-        }
+    if (overlap_collection.overlap_count > 0) {
+        LockDockdOverlap current;
 
-        if (other_max_cross < edge_cross_pos - 1.0 ||
-            other_min_cross > edge_cross_pos + 1.0) {
-            continue;
-        }
+        qsort(overlaps, (size_t)overlap_collection.overlap_count,
+              sizeof(overlaps[0]), lockdockd_compare_overlaps);
 
-        overlap_start = fmax(edge_min, other_min_along);
-        overlap_end = fmin(edge_max, other_max_along);
+        current = overlaps[0];
 
-        if (overlap_end > overlap_start && (overlap_end - overlap_start) > 2.0) {
-            overlaps[overlap_count].start = overlap_start;
-            overlaps[overlap_count].end = overlap_end;
-            overlap_count++;
-
-            if (overlap_count >= LOCKDOCKD_MAX_OVERLAPS) {
-                break;
-            }
-        }
-    }
-
-    for (int i = 0; i < overlap_count; i++) {
-        for (int j = i + 1; j < overlap_count; j++) {
-            if (overlaps[i].start > overlaps[j].start) {
-                LockDockdOverlap tmp = overlaps[i];
-                overlaps[i] = overlaps[j];
-                overlaps[j] = tmp;
-            }
-        }
-    }
-
-    if (overlap_count > 0) {
-        LockDockdOverlap merged[LOCKDOCKD_MAX_OVERLAPS];
-        int merged_count = 0;
-
-        for (int i = 0; i < overlap_count; i++) {
-            if (merged_count == 0) {
-                merged[0] = overlaps[i];
-                merged_count = 1;
+        for (int i = 1; i < overlap_collection.overlap_count; i++) {
+            if (overlaps[i].start <= current.end) {
+                current.end = fmax(current.end, overlaps[i].end);
                 continue;
             }
 
-            if (overlaps[i].start <= merged[merged_count - 1].end) {
-                merged[merged_count - 1].end =
-                    fmax(merged[merged_count - 1].end, overlaps[i].end);
-            } else {
-                merged[merged_count] = overlaps[i];
-                merged_count++;
-            }
+            lockdockd_update_best_safe_segment(&best, pos, current.start);
+            pos = fmax(pos, current.end);
+            current = overlaps[i];
         }
 
-        pos = edge_min;
-
-        for (int i = 0; i < merged_count; i++) {
-            CGFloat safe_start = pos;
-            CGFloat safe_end = merged[i].start;
-
-            if (safe_end > safe_start) {
-                CGFloat width = safe_end - safe_start;
-
-                if (width > best.width) {
-                    best.start = safe_start;
-                    best.end = safe_end;
-                    best.width = width;
-                    best.center = safe_start + width / 2.0;
-                }
-            }
-
-            pos = fmax(pos, merged[i].end);
-        }
-    } else {
-        pos = edge_min;
+        lockdockd_update_best_safe_segment(&best, pos, current.start);
+        pos = fmax(pos, current.end);
     }
 
-    if (pos < edge_max) {
-        CGFloat width = edge_max - pos;
-
-        if (width > best.width) {
-            best.start = pos;
-            best.end = edge_max;
-            best.width = width;
-            best.center = pos + width / 2.0;
-        }
-    }
+    lockdockd_update_best_safe_segment(&best, pos, edge_max);
 
     if (best.width <= 0) {
         best.center = edge_min + (edge_max - edge_min) / 2.0;
@@ -283,19 +412,12 @@ LockDockdSafeSegment lockdockd_find_safe_edge_segment(
 }
 
 CGDirectDisplayID lockdockd_find_display_at_point(CGPoint point) {
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
-    uint32_t count = lockdockd_get_active_displays(displays, LOCKDOCKD_MAX_DISPLAYS);
+    LockDockdPointSearchContext search = {0};
 
-    for (uint32_t i = 0; i < count; i++) {
-        CGRect bounds = CGDisplayBounds(displays[i]);
+    search.point = point;
 
-        if (point.x >= bounds.origin.x &&
-            point.x < bounds.origin.x + bounds.size.width &&
-            point.y >= bounds.origin.y &&
-            point.y < bounds.origin.y + bounds.size.height) {
-            return displays[i];
-        }
-    }
+    lockdockd_for_each_active_display(lockdockd_find_display_at_point_match,
+                                      &search);
 
-    return (CGDirectDisplayID)0;
+    return search.display_id;
 }
