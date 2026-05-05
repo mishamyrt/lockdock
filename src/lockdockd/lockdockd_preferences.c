@@ -1,6 +1,6 @@
 #include "lockdockd_preferences.h"
 
-#include "lockdock_ipc.h"
+#include <lockdock_ipc.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdbool.h>

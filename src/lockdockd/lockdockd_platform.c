@@ -1,20 +1,20 @@
 #include "lockdockd_platform.h"
 
-#include "../thirdparty/json.h"
+#include <thirdparty/json.h>
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <stdbool.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 

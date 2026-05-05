@@ -1,5 +1,6 @@
 #include "lockdock_launchagent.h"
-#include "../lockdock_ipc/lockdock_ipc.h"
+
+#include <lockdock_ipc.h>
 
 #include <errno.h>
 #include <limits.h>

@@ -32,7 +32,13 @@ IPC_SRCS = \
 IPC_OBJS = $(patsubst $(IPC_SRC_DIR)/%.c,$(IPC_BUILD_DIR)/%.o,$(IPC_SRCS))
 
 OPTFLAGS ?= -O3 -flto
-CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" -I$(IPC_SRC_DIR) $(OPTFLAGS)
+CFLAGS = \
+	-std=c11 \
+	-Wall -Wextra \
+	-I$(IPC_SRC_DIR) \
+	-Isrc \
+	-DAPP_VERSION="\"$(VERSION)\"" \
+	$(OPTFLAGS)
 FRAMEWORKS = \
 	-framework CoreGraphics \
 	-framework ApplicationServices \
@@ -43,27 +49,22 @@ FRAMEWORKS = \
 
 all: $(DAEMON_TARGET) $(CLI_TARGET)
 
-$(DAEMON_TARGET): $(IPC_OBJS) $(DAEMON_OBJS)
-	clang $(CFLAGS) -o $@ $(IPC_OBJS) $(DAEMON_OBJS) $(FRAMEWORKS)
-
 $(IPC_BUILD_DIR)/%.o: $(IPC_SRC_DIR)/%.c | $(IPC_BUILD_DIR)
 	clang $(CFLAGS) -c -o $@ $<
-
 $(IPC_BUILD_DIR):
 	mkdir -p $(IPC_BUILD_DIR)
 
+$(DAEMON_TARGET): $(IPC_OBJS) $(DAEMON_OBJS)
+	clang $(CFLAGS) -o $@ $(IPC_OBJS) $(DAEMON_OBJS) $(FRAMEWORKS)
 $(DAEMON_BUILD_DIR)/%.o: $(DAEMON_SRC_DIR)/%.c | $(DAEMON_BUILD_DIR)
 	clang $(CFLAGS) -c -o $@ $<
-
 $(DAEMON_BUILD_DIR):
 	mkdir -p $(DAEMON_BUILD_DIR)
 
 $(CLI_TARGET): $(IPC_OBJS) $(CLI_OBJS)
 	clang $(CFLAGS) -o $@ $(IPC_OBJS) $(CLI_OBJS) $(FRAMEWORKS)
-
 $(CLI_BUILD_DIR)/%.o: $(CLI_SRC_DIR)/%.c | $(CLI_BUILD_DIR)
 	clang $(CFLAGS) -c -o $@ $<
-
 $(CLI_BUILD_DIR):
 	mkdir -p $(CLI_BUILD_DIR)
 

@@ -4,7 +4,9 @@
 #include "lockdockd_platform.h"
 #include "lockdockd_preferences.h"
 #include "lockdockd_runtime.h"
-#include "../lockdock_ipc/lockdock_ipc.h"
+
+#include <lockdock_ipc.h>
+#include <thirdparty/json.h>
 
 #include <errno.h>
 #include <fcntl.h>
