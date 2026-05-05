@@ -1,4 +1,4 @@
-# lockdock
+# lockdock [![Quality Assurance](https://github.com/mishamyrt/lockdock/actions/workflows/qa.yml/badge.svg)](https://github.com/mishamyrt/lockdock/actions/workflows/qa.yml) [![Version](https://img.shields.io/github/v/tag/mishamyrt/lockdock?label=version)](https://github.com/mishamyrt/lockdock/releases/latest)
 
 `lockdock` pins the Dock in macOS to a selected display. The project consists of a background daemon, `lockdockd`, and a CLI, `lockdock`, which installs the daemon as a `LaunchAgent` and sends commands to it.
 
