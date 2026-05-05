@@ -233,12 +233,14 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
     cursor_locked = lockdockd_set_cursor_association(false);
     safe_segment = lockdockd_find_safe_edge_segment(display_id, orientation);
 
+    const CGFloat edge_offset = 5.0;
+
     switch (orientation) {
         case LOCKDOCKD_ORIENT_BOTTOM: {
             CGFloat edge_y = bounds.origin.y + bounds.size.height;
             CGFloat trigger_x = safe_segment.center;
 
-            approach = CGPointMake(trigger_x, edge_y - 50.0);
+            approach = CGPointMake(trigger_x, edge_y - edge_offset);
             edge = CGPointMake(trigger_x, edge_y - 1.0);
             break;
         }
@@ -247,7 +249,7 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
             CGFloat edge_x = bounds.origin.x;
             CGFloat trigger_y = safe_segment.center;
 
-            approach = CGPointMake(edge_x + 50.0, trigger_y);
+            approach = CGPointMake(edge_x + edge_offset, trigger_y);
             edge = CGPointMake(edge_x + 1.0, trigger_y);
             break;
         }
@@ -256,7 +258,7 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
             CGFloat edge_x = bounds.origin.x + bounds.size.width;
             CGFloat trigger_y = safe_segment.center;
 
-            approach = CGPointMake(edge_x - 50.0, trigger_y);
+            approach = CGPointMake(edge_x - edge_offset, trigger_y);
             edge = CGPointMake(edge_x - 1.0, trigger_y);
             break;
         }
