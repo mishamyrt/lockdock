@@ -11,7 +11,6 @@ DAEMON_SRCS = \
 	$(DAEMON_SRC_DIR)/lockdockd_daemon.c \
 	$(DAEMON_SRC_DIR)/lockdockd_display.c \
 	$(DAEMON_SRC_DIR)/lockdockd_ipc.c \
-	$(DAEMON_SRC_DIR)/lockdockd_launchagent.c \
 	$(DAEMON_SRC_DIR)/lockdockd_locker.c \
 	$(DAEMON_SRC_DIR)/lockdockd_platform.c \
 	$(DAEMON_SRC_DIR)/lockdockd_preferences.c \
@@ -32,7 +31,7 @@ FRAMEWORKS = \
 all: $(DAEMON_TARGET)
 
 $(DAEMON_TARGET): $(DAEMON_OBJS)
-	clang $(OPTFLAGS) -o $@ $(DAEMON_OBJS) $(FRAMEWORKS)
+	clang $(CFLAGS) -o $@ $(DAEMON_OBJS) $(FRAMEWORKS)
 
 $(DAEMON_BUILD_DIR)/%.o: $(DAEMON_SRC_DIR)/%.c | $(DAEMON_BUILD_DIR)
 	clang $(CFLAGS) -c -o $@ $<
