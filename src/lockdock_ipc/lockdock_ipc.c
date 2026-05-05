@@ -1,6 +1,6 @@
 #include "lockdock_ipc.h"
 
-#include <thirdparty/json.h>
+#include <json.h>
 
 #include <errno.h>
 #include <limits.h>

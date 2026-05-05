@@ -1,6 +1,6 @@
 #include "lockdockd_platform.h"
 
-#include <thirdparty/json.h>
+#include <json.h>
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>

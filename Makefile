@@ -3,6 +3,7 @@ VERSION = 0.1.0
 SRC_DIR = src
 BUILD_DIR = build
 INSTALL_DIR = ${HOME}/.local/bin
+THIRDPARTY_DIR = thirdparty
 
 DAEMON_SRC_DIR = $(SRC_DIR)/lockdockd
 DAEMON_BUILD_DIR = $(BUILD_DIR)/artifacts/lockdockd
@@ -36,9 +37,9 @@ CFLAGS = \
 	-std=c11 \
 	-Wall -Wextra \
 	-I$(IPC_SRC_DIR) \
-	-Isrc \
-	-DAPP_VERSION="\"$(VERSION)\"" \
-	$(OPTFLAGS)
+	-I$(THIRDPARTY_DIR) \
+	-DAPP_VERSION="\"$(VERSION)\""
+
 FRAMEWORKS = \
 	-framework CoreGraphics \
 	-framework ApplicationServices \
@@ -50,21 +51,21 @@ FRAMEWORKS = \
 all: $(DAEMON_TARGET) $(CLI_TARGET)
 
 $(IPC_BUILD_DIR)/%.o: $(IPC_SRC_DIR)/%.c | $(IPC_BUILD_DIR)
-	clang $(CFLAGS) -c -o $@ $<
+	clang $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
 $(IPC_BUILD_DIR):
 	mkdir -p $(IPC_BUILD_DIR)
 
 $(DAEMON_TARGET): $(IPC_OBJS) $(DAEMON_OBJS)
-	clang $(CFLAGS) -o $@ $(IPC_OBJS) $(DAEMON_OBJS) $(FRAMEWORKS)
+	clang $(CFLAGS) $(OPTFLAGS) -o $@ $(IPC_OBJS) $(DAEMON_OBJS) $(FRAMEWORKS)
 $(DAEMON_BUILD_DIR)/%.o: $(DAEMON_SRC_DIR)/%.c | $(DAEMON_BUILD_DIR)
-	clang $(CFLAGS) -c -o $@ $<
+	clang $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
 $(DAEMON_BUILD_DIR):
 	mkdir -p $(DAEMON_BUILD_DIR)
 
 $(CLI_TARGET): $(IPC_OBJS) $(CLI_OBJS)
-	clang $(CFLAGS) -o $@ $(IPC_OBJS) $(CLI_OBJS) $(FRAMEWORKS)
+	clang $(CFLAGS) $(OPTFLAGS) -o $@ $(IPC_OBJS) $(CLI_OBJS) $(FRAMEWORKS)
 $(CLI_BUILD_DIR)/%.o: $(CLI_SRC_DIR)/%.c | $(CLI_BUILD_DIR)
-	clang $(CFLAGS) -c -o $@ $<
+	clang $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
 $(CLI_BUILD_DIR):
 	mkdir -p $(CLI_BUILD_DIR)
 
@@ -72,7 +73,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 fmt:
-	find src/ \
+	find src/ tests/ \
 		\( -iname '*.h' -o -iname '*.c' \) \
 		-not -path "*/thirdparty/*" \
 		| xargs clang-format -i
@@ -92,3 +93,5 @@ publish:
 	git tag -a "v${VERSION}" -m "release v${VERSION}"
 	git push
 	git push --tags
+
+include tests/build.mk

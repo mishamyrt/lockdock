@@ -22,5 +22,5 @@ jobs:
             - name: Build
               run: make
 
-            - name: Validate
-              run: ./build/lockdock version
+            - name: Test
+              run: make test
