@@ -3,7 +3,6 @@ TARGET = lockdockd
 SRC_DIR = src
 OBJS = \
 	$(SRC_DIR)/main.o \
-	$(SRC_DIR)/lockdockd_commands.o \
 	$(SRC_DIR)/lockdockd_daemon.o \
 	$(SRC_DIR)/lockdockd_display.o \
 	$(SRC_DIR)/lockdockd_ipc.o \

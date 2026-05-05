@@ -581,8 +581,6 @@ bool lockdockd_launchagent_enable(char *message, size_t message_size) {
     const char *bootout_argv[] = {"launchctl", "bootout", service_target, NULL};
     const char *bootstrap_argv[] = {"launchctl", "bootstrap", domain_target,
                                     plist_path, NULL};
-    const char *kickstart_argv[] = {"launchctl", "kickstart", "-k", service_target,
-                                    NULL};
 
     if (!lockdockd_copy_executable_path(executable_path, sizeof(executable_path),
                                         error, sizeof(error)) ||
