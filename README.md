@@ -8,6 +8,7 @@ If you have multiple monitors, macOS can move the Dock between them uncontrollab
 
 ## Features
 
+- very high efficiency. The daemon consumes a maximum of 10 megabytes of RAM and very little CPU.
 - displays a list of active displays and the current Dock position;
 - pins the Dock to a selected display;
 - runs in the background via a user `LaunchAgent`;
