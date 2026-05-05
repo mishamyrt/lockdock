@@ -7,8 +7,8 @@
 #include "lockdockd_request.h"
 #include "lockdockd_runtime.h"
 
-#include <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdatomic.h>
@@ -23,6 +23,7 @@
 
 static volatile sig_atomic_t g_daemon_running = 1;
 static _Atomic bool g_display_state_dirty = false;
+static int g_daemon_wakeup_pipe[2] = {-1, -1};
 
 typedef struct {
     CGDirectDisplayID dock_display;
@@ -35,12 +36,31 @@ typedef struct {
 static void lockdockd_signal_handler(int signal_number) {
     if (signal_number == SIGINT || signal_number == SIGTERM) {
         g_daemon_running = 0;
+        if (g_daemon_wakeup_pipe[1] >= 0) {
+            unsigned char token = 0;
+
+            write(g_daemon_wakeup_pipe[1], &token, sizeof(token));
+        }
     }
+}
+
+static void lockdockd_notify_daemon(void) {
+    unsigned char token = 0;
+    ssize_t written;
+
+    if (g_daemon_wakeup_pipe[1] < 0) {
+        return;
+    }
+
+    do {
+        written = write(g_daemon_wakeup_pipe[1], &token, sizeof(token));
+    } while (written < 0 && errno == EINTR);
 }
 
 static void lockdockd_mark_display_state_dirty(void) {
     lockdockd_invalidate_display_name_cache();
     atomic_store(&g_display_state_dirty, true);
+    lockdockd_notify_daemon();
 }
 
 static void lockdockd_display_reconfiguration_callback(
@@ -780,12 +800,6 @@ static int lockdockd_open_server_socket(char *socket_path,
     return fd;
 }
 
-static void lockdockd_pump_run_loop(void) {
-    while (CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0, true) ==
-           kCFRunLoopRunHandledSource) {
-    }
-}
-
 static bool lockdockd_register_display_callback(char *error, size_t error_size) {
     CGError cg_error = CGDisplayRegisterReconfigurationCallback(
         lockdockd_display_reconfiguration_callback, NULL);
@@ -805,6 +819,89 @@ static void lockdockd_remove_display_callback(void) {
         lockdockd_display_reconfiguration_callback, NULL);
 }
 
+static void lockdockd_close_wakeup_pipe(void) {
+    if (g_daemon_wakeup_pipe[0] >= 0) {
+        close(g_daemon_wakeup_pipe[0]);
+        g_daemon_wakeup_pipe[0] = -1;
+    }
+
+    if (g_daemon_wakeup_pipe[1] >= 0) {
+        close(g_daemon_wakeup_pipe[1]);
+        g_daemon_wakeup_pipe[1] = -1;
+    }
+}
+
+static bool lockdockd_make_fd_nonblocking(int fd,
+                                          char *error,
+                                          size_t error_size) {
+    int flags = fcntl(fd, F_GETFL, 0);
+
+    if (flags < 0) {
+        snprintf(error, error_size, "Failed to read fd flags: %s",
+                 strerror(errno));
+        return false;
+    }
+
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) {
+        snprintf(error, error_size, "Failed to set non-blocking fd: %s",
+                 strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+static bool lockdockd_open_wakeup_pipe(char *error, size_t error_size) {
+    if (pipe(g_daemon_wakeup_pipe) != 0) {
+        snprintf(error, error_size, "Failed to create daemon wakeup pipe: %s",
+                 strerror(errno));
+        return false;
+    }
+
+    if (!lockdockd_make_fd_nonblocking(g_daemon_wakeup_pipe[0], error,
+                                       error_size) ||
+        !lockdockd_make_fd_nonblocking(g_daemon_wakeup_pipe[1], error,
+                                       error_size)) {
+        lockdockd_close_wakeup_pipe();
+        return false;
+    }
+
+    return true;
+}
+
+static void lockdockd_drain_wakeup_pipe(void) {
+    char buffer[64];
+
+    if (g_daemon_wakeup_pipe[0] < 0) {
+        return;
+    }
+
+    while (true) {
+        ssize_t nread = read(g_daemon_wakeup_pipe[0], buffer, sizeof(buffer));
+
+        if (nread > 0) {
+            continue;
+        }
+
+        if (nread < 0 && errno == EINTR) {
+            continue;
+        }
+
+        break;
+    }
+}
+
+static void lockdockd_reconcile_pending_display_state(char *error,
+                                                      size_t error_size) {
+    if (!atomic_exchange(&g_display_state_dirty, false)) {
+        return;
+    }
+
+    if (!lockdockd_reconcile_display_state(error, error_size)) {
+        fprintf(stderr, "Display reconcile failed: %s\n", error);
+    }
+}
+
 int lockdockd_run_daemon(void) {
     char socket_path[PATH_MAX];
     char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
@@ -814,16 +911,23 @@ int lockdockd_run_daemon(void) {
     signal(SIGTERM, lockdockd_signal_handler);
     signal(SIGPIPE, SIG_IGN);
 
+    if (!lockdockd_open_wakeup_pipe(error, sizeof(error))) {
+        fprintf(stderr, "%s\n", error);
+        return 1;
+    }
+
     listen_fd = lockdockd_open_server_socket(socket_path, sizeof(socket_path), error,
                                              sizeof(error));
     if (listen_fd < 0) {
         fprintf(stderr, "%s\n", error);
+        lockdockd_close_wakeup_pipe();
         return 1;
     }
 
     if (!lockdockd_register_display_callback(error, sizeof(error))) {
         fprintf(stderr, "%s\n", error);
         close(listen_fd);
+        lockdockd_close_wakeup_pipe();
         unlink(socket_path);
         return 1;
     }
@@ -836,15 +940,18 @@ int lockdockd_run_daemon(void) {
 
     while (g_daemon_running) {
         fd_set read_fds;
-        struct timeval timeout;
         int select_result;
+        int max_fd = listen_fd;
+
+        if (g_daemon_wakeup_pipe[0] > max_fd) {
+            max_fd = g_daemon_wakeup_pipe[0];
+        }
 
         FD_ZERO(&read_fds);
         FD_SET(listen_fd, &read_fds);
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 50000;
+        FD_SET(g_daemon_wakeup_pipe[0], &read_fds);
 
-        select_result = select(listen_fd + 1, &read_fds, NULL, NULL, &timeout);
+        select_result = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
         if (select_result < 0) {
             if (errno == EINTR) {
                 continue;
@@ -853,6 +960,16 @@ int lockdockd_run_daemon(void) {
             fprintf(stderr, "Daemon select failed: %s\n", strerror(errno));
             break;
         }
+
+        if (FD_ISSET(g_daemon_wakeup_pipe[0], &read_fds)) {
+            lockdockd_drain_wakeup_pipe();
+        }
+
+        if (!g_daemon_running) {
+            break;
+        }
+
+        lockdockd_reconcile_pending_display_state(error, sizeof(error));
 
         if (select_result > 0 && FD_ISSET(listen_fd, &read_fds)) {
             int client_fd = accept(listen_fd, NULL, NULL);
@@ -886,16 +1003,12 @@ int lockdockd_run_daemon(void) {
             }
         }
 
-        lockdockd_pump_run_loop();
-
-        if (atomic_exchange(&g_display_state_dirty, false) &&
-            !lockdockd_reconcile_display_state(error, sizeof(error))) {
-            fprintf(stderr, "Display reconcile failed: %s\n", error);
-        }
+        lockdockd_reconcile_pending_display_state(error, sizeof(error));
     }
 
     lockdockd_remove_display_callback();
     lockdockd_locker_shutdown();
+    lockdockd_close_wakeup_pipe();
     if (listen_fd >= 0) {
         close(listen_fd);
     }

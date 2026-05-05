@@ -6,13 +6,27 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
-static CGDirectDisplayID g_locked_display = 0;
+#define LOCKDOCKD_LOCKER_ERROR_BUFFER_SIZE 256
+
+static _Atomic uint32_t g_locked_display = 0;
 static double g_lock_edge_zone = 4.0;
 static CFMachPortRef g_event_tap = NULL;
 static CFRunLoopSourceRef g_event_source = NULL;
+static CFRunLoopRef g_event_run_loop = NULL;
+static pthread_t g_event_thread;
+static pthread_mutex_t g_event_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_event_thread_cond = PTHREAD_COND_INITIALIZER;
+static bool g_event_thread_starting = false;
+static bool g_event_thread_running = false;
+static bool g_event_thread_joinable = false;
+static char g_event_thread_error[LOCKDOCKD_LOCKER_ERROR_BUFFER_SIZE];
 
 static void lockdockd_locker_enable_tap(void) {
     if (g_event_tap != NULL) {
@@ -41,6 +55,7 @@ static CGEventRef lockdockd_locker_event_callback(CGEventTapProxy proxy,
                                                   void *user_info) {
     CGPoint point;
     CGDirectDisplayID current_display;
+    CGDirectDisplayID locked_display;
     CGRect bounds;
     CGFloat distance;
     LockDockdDockOrientation orientation;
@@ -59,13 +74,14 @@ static CGEventRef lockdockd_locker_event_callback(CGEventTapProxy proxy,
         return event;
     }
 
-    if (g_locked_display == 0) {
+    locked_display = (CGDirectDisplayID)atomic_load(&g_locked_display);
+    if (locked_display == 0) {
         return event;
     }
 
     point = CGEventGetLocation(event);
     current_display = lockdockd_find_display_at_point(point);
-    if (current_display == 0 || current_display == g_locked_display) {
+    if (current_display == 0 || current_display == locked_display) {
         return event;
     }
 
@@ -90,35 +106,48 @@ static void lockdockd_set_error(char *buffer,
     snprintf(buffer, buffer_size, "%s", message);
 }
 
-static void lockdockd_locker_release_tap(void) {
-    if (g_event_tap != NULL) {
-        CGEventTapEnable(g_event_tap, false);
-    }
-
-    if (g_event_source != NULL) {
-        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), g_event_source,
-                              kCFRunLoopCommonModes);
-        CFRelease(g_event_source);
-        g_event_source = NULL;
-    }
-
-    if (g_event_tap != NULL) {
-        CFRelease(g_event_tap);
-        g_event_tap = NULL;
-    }
+static void lockdockd_locker_set_thread_error(const char *message) {
+    snprintf(g_event_thread_error, sizeof(g_event_thread_error), "%s", message);
 }
 
-static bool lockdockd_locker_ensure_tap(char *error, size_t error_size) {
+static void lockdockd_locker_signal_thread_state(void) {
+    pthread_cond_broadcast(&g_event_thread_cond);
+}
+
+static void lockdockd_locker_publish_thread_ready(CFRunLoopRef run_loop) {
+    pthread_mutex_lock(&g_event_thread_mutex);
+    g_event_run_loop = run_loop;
+    g_event_thread_running = true;
+    g_event_thread_starting = false;
+    g_event_thread_error[0] = '\0';
+    lockdockd_locker_signal_thread_state();
+    pthread_mutex_unlock(&g_event_thread_mutex);
+}
+
+static void lockdockd_locker_publish_thread_failure(const char *message) {
+    pthread_mutex_lock(&g_event_thread_mutex);
+    g_event_thread_running = false;
+    g_event_thread_starting = false;
+    lockdockd_locker_set_thread_error(message);
+    lockdockd_locker_signal_thread_state();
+    pthread_mutex_unlock(&g_event_thread_mutex);
+}
+
+static void lockdockd_locker_publish_thread_stopped(void) {
+    pthread_mutex_lock(&g_event_thread_mutex);
+    g_event_tap = NULL;
+    g_event_source = NULL;
+    g_event_run_loop = NULL;
+    g_event_thread_running = false;
+    lockdockd_locker_signal_thread_state();
+    pthread_mutex_unlock(&g_event_thread_mutex);
+}
+
+static void *lockdockd_locker_thread_main(void *user_info) {
     CGEventMask mask;
+    CFRunLoopRef run_loop;
 
-    if (g_event_tap != NULL && g_event_source != NULL) {
-        lockdockd_locker_enable_tap();
-        return true;
-    }
-
-    if (g_event_tap != NULL || g_event_source != NULL) {
-        lockdockd_locker_release_tap();
-    }
+    (void)user_info;
 
     mask = CGEventMaskBit(kCGEventMouseMoved) |
            CGEventMaskBit(kCGEventLeftMouseDragged) |
@@ -129,23 +158,133 @@ static bool lockdockd_locker_ensure_tap(char *error, size_t error_size) {
                                    kCGEventTapOptionDefault, mask,
                                    lockdockd_locker_event_callback, NULL);
     if (g_event_tap == NULL) {
-        lockdockd_set_error(error, error_size,
-                            "Failed to create event tap. Grant Accessibility "
-                            "permission in System Settings");
-        return false;
+        lockdockd_locker_publish_thread_failure(
+            "Failed to create event tap. Grant Accessibility permission in "
+            "System Settings");
+        return NULL;
     }
 
     g_event_source =
         CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_event_tap, 0);
     if (g_event_source == NULL) {
-        lockdockd_locker_release_tap();
-        lockdockd_set_error(error, error_size, "Failed to create event tap source");
+        CFRelease(g_event_tap);
+        g_event_tap = NULL;
+        lockdockd_locker_publish_thread_failure(
+            "Failed to create event tap source");
+        return NULL;
+    }
+
+    run_loop = CFRunLoopGetCurrent();
+    CFRunLoopAddSource(run_loop, g_event_source, kCFRunLoopCommonModes);
+    lockdockd_locker_enable_tap();
+    lockdockd_locker_publish_thread_ready(run_loop);
+
+    CFRunLoopRun();
+
+    if (g_event_tap != NULL) {
+        CGEventTapEnable(g_event_tap, false);
+    }
+
+    if (g_event_source != NULL) {
+        CFRunLoopRemoveSource(run_loop, g_event_source, kCFRunLoopCommonModes);
+        CFRelease(g_event_source);
+    }
+
+    if (g_event_tap != NULL) {
+        CFRelease(g_event_tap);
+    }
+
+    lockdockd_locker_publish_thread_stopped();
+    return NULL;
+}
+
+static void lockdockd_locker_wait_for_thread_start(void) {
+    while (g_event_thread_starting) {
+        pthread_cond_wait(&g_event_thread_cond, &g_event_thread_mutex);
+    }
+}
+
+static void lockdockd_locker_join_thread(pthread_t thread) {
+    pthread_join(thread, NULL);
+}
+
+static bool lockdockd_locker_ensure_tap(char *error, size_t error_size) {
+    pthread_t stale_thread;
+    bool has_stale_thread = false;
+
+    pthread_mutex_lock(&g_event_thread_mutex);
+    lockdockd_locker_wait_for_thread_start();
+
+    if (g_event_thread_running) {
+        pthread_mutex_unlock(&g_event_thread_mutex);
+        return true;
+    }
+
+    if (g_event_thread_joinable) {
+        stale_thread = g_event_thread;
+        g_event_thread_joinable = false;
+        has_stale_thread = true;
+    }
+
+    g_event_thread_starting = true;
+    g_event_thread_error[0] = '\0';
+    pthread_mutex_unlock(&g_event_thread_mutex);
+
+    if (has_stale_thread) {
+        lockdockd_locker_join_thread(stale_thread);
+    }
+
+    if (pthread_create(&g_event_thread, NULL, lockdockd_locker_thread_main,
+                       NULL) != 0) {
+        pthread_mutex_lock(&g_event_thread_mutex);
+        g_event_thread_starting = false;
+        pthread_mutex_unlock(&g_event_thread_mutex);
+        snprintf(error, error_size, "Failed to start locker event thread");
         return false;
     }
 
-    CFRunLoopAddSource(CFRunLoopGetCurrent(), g_event_source, kCFRunLoopCommonModes);
-    lockdockd_locker_enable_tap();
-    return true;
+    pthread_mutex_lock(&g_event_thread_mutex);
+    g_event_thread_joinable = true;
+    lockdockd_locker_wait_for_thread_start();
+
+    if (g_event_thread_running) {
+        pthread_mutex_unlock(&g_event_thread_mutex);
+        return true;
+    }
+
+    lockdockd_set_error(error, error_size, g_event_thread_error);
+    stale_thread = g_event_thread;
+    g_event_thread_joinable = false;
+    pthread_mutex_unlock(&g_event_thread_mutex);
+    lockdockd_locker_join_thread(stale_thread);
+    return false;
+}
+
+static void lockdockd_locker_stop_tap(void) {
+    pthread_t thread;
+    CFRunLoopRef run_loop = NULL;
+    bool join_thread = false;
+
+    pthread_mutex_lock(&g_event_thread_mutex);
+    lockdockd_locker_wait_for_thread_start();
+
+    if (g_event_thread_joinable) {
+        thread = g_event_thread;
+        run_loop = g_event_run_loop;
+        g_event_thread_joinable = false;
+        join_thread = true;
+    }
+
+    if (run_loop != NULL) {
+        CFRunLoopStop(run_loop);
+        CFRunLoopWakeUp(run_loop);
+    }
+
+    pthread_mutex_unlock(&g_event_thread_mutex);
+
+    if (join_thread) {
+        lockdockd_locker_join_thread(thread);
+    }
 }
 
 bool lockdockd_locker_set_target(CGDirectDisplayID display_id,
@@ -155,17 +294,17 @@ bool lockdockd_locker_set_target(CGDirectDisplayID display_id,
         return false;
     }
 
-    g_locked_display = display_id;
+    atomic_store(&g_locked_display, display_id);
     return true;
 }
 
 void lockdockd_locker_clear_target(void) {
-    g_locked_display = 0;
-    lockdockd_locker_release_tap();
+    atomic_store(&g_locked_display, 0);
+    lockdockd_locker_stop_tap();
 }
 
 CGDirectDisplayID lockdockd_locker_get_target(void) {
-    return g_locked_display;
+    return (CGDirectDisplayID)atomic_load(&g_locked_display);
 }
 
 void lockdockd_locker_shutdown(void) {
