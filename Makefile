@@ -39,7 +39,7 @@ FRAMEWORKS = \
 	-framework ColorSync \
 	-framework CoreFoundation
 
-.PHONY: all clean
+.PHONY: all clean install publish
 
 all: $(DAEMON_TARGET) $(CLI_TARGET)
 
@@ -79,3 +79,15 @@ fmt:
 install: $(CLI_TARGET) $(DAEMON_TARGET)
 	mkdir -p $(INSTALL_DIR)
 	cp $^ $(INSTALL_DIR)
+
+publish:
+	git add Makefile
+	git commit -m "chore: release ${VERSION} 🔥"
+	git tag "v${VERSION}"
+	git-cliff -o CHANGELOG.md
+	git tag -d "v${VERSION}"
+	git add CHANGELOG.md
+	git commit --amend --no-edit
+	git tag -a "v${VERSION}" -m "release v${VERSION}"
+	git push
+	git push --tags
