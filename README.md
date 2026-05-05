@@ -21,6 +21,13 @@ If you have multiple monitors, macOS can move the Dock between them uncontrollab
 
 ## Installation
 
+### From brew
+
+```sh
+brew install mishamyrt/tap/lockdock
+lockdock enable # enable background daemon
+```
+
 ### From sources
 
 Clone the repository, open it in your terminal, and run the following commands:
