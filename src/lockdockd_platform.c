@@ -9,18 +9,22 @@
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
 #define LOCKDOCKD_MAX_DISPLAYS 32
 
+#define LOCKDOCKD_JSON_TOKENIZER_STACK_SIZE 4096
 #define LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
 
 typedef struct {
@@ -39,7 +43,19 @@ typedef struct {
 static LockDockdDisplayNameEntry
     lockdockd_display_name_cache[LOCKDOCKD_MAX_DISPLAYS];
 static size_t lockdockd_display_name_cache_count = 0;
-static time_t lockdockd_display_name_cache_loaded_at = 0;
+static time_t lockdockd_display_name_cache_last_refresh_attempt_at = 0;
+static bool lockdockd_display_name_cache_needs_refresh = true;
+
+static void lockdockd_clear_display_name_cache_entries(void) {
+    memset(lockdockd_display_name_cache, 0, sizeof(lockdockd_display_name_cache));
+    lockdockd_display_name_cache_count = 0;
+}
+
+void lockdockd_invalidate_display_name_cache(void) {
+    lockdockd_clear_display_name_cache_entries();
+    lockdockd_display_name_cache_last_refresh_attempt_at = 0;
+    lockdockd_display_name_cache_needs_refresh = true;
+}
 
 static bool lockdockd_parse_display_id(const char *value,
                                        CGDirectDisplayID *display_id_out) {
@@ -85,21 +101,45 @@ static void lockdockd_cache_display_name(LockDockdDisplayNameEntry *entries,
     (*entry_count)++;
 }
 
-static bool lockdockd_parse_system_profiler_file(const char *path,
+static json_t *lockdockd_open_json_stream(FILE *stream) {
+    json_t *json = NULL;
+
+    if (stream == NULL) {
+        return NULL;
+    }
+
+    json = (json_t *)JSON_REALLOC(NULL, NULL, sizeof(*json));
+    if (json == NULL) {
+        fprintf(stderr, "PANIC: Failed to allocate memory for json structure.");
+        exit(-1);
+    }
+
+    json->stack =
+        (uint8_t *)calloc(LOCKDOCKD_JSON_TOKENIZER_STACK_SIZE, sizeof(uint8_t));
+    if (json->stack == NULL) {
+        fprintf(stderr, "PANIC: Failed to allocate memory for json stack.");
+        exit(-1);
+    }
+
+    json->lc = json__start;
+    json->col = 1;
+    json->row = 1;
+    json->sc = 0;
+    json->fp = stream;
+    json->level = 0;
+    json->stack_capacity = LOCKDOCKD_JSON_TOKENIZER_STACK_SIZE;
+    return json;
+}
+
+static bool lockdockd_parse_system_profiler_json(json_t *json,
                                                  LockDockdDisplayNameEntry *entries,
                                                  size_t *entry_count) {
     LockDockdDisplayObjectState object_stack[32];
     char current_name[128];
-    json_t *json;
     json_token_t token;
     int object_depth = -1;
 
-    if (path == NULL || entries == NULL || entry_count == NULL) {
-        return false;
-    }
-
-    json = json_fopen(path);
-    if (json == NULL) {
+    if (json == NULL || entries == NULL || entry_count == NULL) {
         return false;
     }
 
@@ -185,39 +225,102 @@ static bool lockdockd_parse_system_profiler_file(const char *path,
     return *entry_count > 0;
 }
 
+static bool lockdockd_parse_system_profiler_stream(
+    FILE *stream,
+    LockDockdDisplayNameEntry *entries,
+    size_t *entry_count) {
+    json_t *json = lockdockd_open_json_stream(stream);
+
+    if (json == NULL) {
+        return false;
+    }
+
+    return lockdockd_parse_system_profiler_json(json, entries, entry_count);
+}
+
+static bool lockdockd_wait_for_process(pid_t pid, int *status_out) {
+    int status = 0;
+
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            return false;
+        }
+    }
+
+    if (status_out != NULL) {
+        *status_out = status;
+    }
+
+    return true;
+}
+
 static bool lockdockd_refresh_display_name_cache(void) {
+    const char *const argv[] = {"/usr/sbin/system_profiler", "-json",
+                                "SPDisplaysDataType", NULL};
     LockDockdDisplayNameEntry entries[LOCKDOCKD_MAX_DISPLAYS];
     size_t entry_count = 0;
-    char path[] = "/tmp/lockdockd-system-profiler-XXXXXX";
-    char command[PATH_MAX + 96];
-    int fd;
+    time_t refresh_attempt_at = time(NULL);
+    int pipefd[2];
+    pid_t pid;
+    FILE *stream = NULL;
+    int status = 0;
+    bool parsed = false;
     bool refreshed = false;
 
     memset(entries, 0, sizeof(entries));
+    lockdockd_display_name_cache_last_refresh_attempt_at = refresh_attempt_at;
+    lockdockd_display_name_cache_needs_refresh = false;
 
-    fd = mkstemp(path);
-    if (fd < 0) {
-        return false;
-    }
-    close(fd);
-
-    if (snprintf(
-            command, sizeof(command),
-            "/usr/sbin/system_profiler -json SPDisplaysDataType > %s 2>/dev/null",
-            path) >= (int)sizeof(command)) {
-        unlink(path);
+    if (pipe(pipefd) != 0) {
         return false;
     }
 
-    if (system(command) == 0 &&
-        lockdockd_parse_system_profiler_file(path, entries, &entry_count)) {
+    pid = fork();
+    if (pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return false;
+    }
+
+    if (pid == 0) {
+        int stderr_fd = -1;
+
+        close(pipefd[0]);
+
+        if (dup2(pipefd[1], STDOUT_FILENO) < 0) {
+            _exit(127);
+        }
+
+        stderr_fd = open("/dev/null", O_WRONLY);
+        if (stderr_fd < 0 || dup2(stderr_fd, STDERR_FILENO) < 0) {
+            if (stderr_fd >= 0) {
+                close(stderr_fd);
+            }
+            _exit(127);
+        }
+
+        close(stderr_fd);
+        close(pipefd[1]);
+        execv(argv[0], (char *const *)argv);
+        _exit(127);
+    }
+
+    close(pipefd[1]);
+    stream = fdopen(pipefd[0], "r");
+    if (stream != NULL) {
+        parsed =
+            lockdockd_parse_system_profiler_stream(stream, entries, &entry_count);
+    } else {
+        close(pipefd[0]);
+    }
+
+    if (lockdockd_wait_for_process(pid, &status) && parsed && WIFEXITED(status) &&
+        WEXITSTATUS(status) == 0) {
         memcpy(lockdockd_display_name_cache, entries, sizeof(entries));
         lockdockd_display_name_cache_count = entry_count;
-        lockdockd_display_name_cache_loaded_at = time(NULL);
         refreshed = true;
     }
 
-    unlink(path);
     return refreshed;
 }
 
@@ -255,8 +358,9 @@ bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
         return true;
     }
 
-    if (lockdockd_display_name_cache_loaded_at == 0 ||
-        difftime(now, lockdockd_display_name_cache_loaded_at) >=
+    if (lockdockd_display_name_cache_needs_refresh ||
+        lockdockd_display_name_cache_last_refresh_attempt_at == 0 ||
+        difftime(now, lockdockd_display_name_cache_last_refresh_attempt_at) >=
             LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS) {
         if (!lockdockd_refresh_display_name_cache()) {
             return false;
@@ -267,11 +371,7 @@ bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
         return true;
     }
 
-    if (!lockdockd_refresh_display_name_cache()) {
-        return false;
-    }
-
-    return lockdockd_copy_cached_display_name(display_id, buffer, buffer_size);
+    return false;
 }
 
 bool lockdockd_is_accessibility_trusted(void) {

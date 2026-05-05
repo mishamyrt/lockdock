@@ -12,7 +12,6 @@ bool lockdockd_preferences_save_preferred_display(
     size_t error_size);
 bool lockdockd_preferences_load_preferred_display(
     LockDockdDisplayIdentity *identity_out);
-bool lockdockd_preferences_clear_preferred_display(char *error,
-                                                   size_t error_size);
+bool lockdockd_preferences_clear_preferred_display(char *error, size_t error_size);
 
 #endif

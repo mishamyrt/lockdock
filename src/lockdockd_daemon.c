@@ -2,6 +2,7 @@
 
 #include "lockdockd_ipc.h"
 #include "lockdockd_locker.h"
+#include "lockdockd_platform.h"
 #include "lockdockd_preferences.h"
 #include "lockdockd_runtime.h"
 
@@ -54,6 +55,7 @@ static void lockdockd_signal_handler(int signal_number) {
 }
 
 static void lockdockd_mark_display_state_dirty(void) {
+    lockdockd_invalidate_display_name_cache();
     atomic_store(&g_display_state_dirty, true);
 }
 
@@ -742,8 +744,7 @@ static void lockdockd_set_rollback_error(char *error,
     if (has_preference_rollback_error && has_runtime_rollback_error) {
         snprintf(error, error_size,
                  "%s (rollback failed: preferences: %s; runtime: %s)",
-                 operation_error, preference_rollback_error,
-                 runtime_rollback_error);
+                 operation_error, preference_rollback_error, runtime_rollback_error);
         return;
     }
 
@@ -753,8 +754,8 @@ static void lockdockd_set_rollback_error(char *error,
         return;
     }
 
-    snprintf(error, error_size, "%s (rollback failed: runtime: %s)",
-             operation_error, runtime_rollback_error);
+    snprintf(error, error_size, "%s (rollback failed: runtime: %s)", operation_error,
+             runtime_rollback_error);
 }
 
 static bool lockdockd_apply_unlock(char *error, size_t error_size) {
@@ -769,9 +770,9 @@ static bool lockdockd_apply_unlock(char *error, size_t error_size) {
 
     if (!lockdockd_preferences_clear_preferred_display(operation_error,
                                                        sizeof(operation_error))) {
-        if (!lockdockd_restore_preferred_display(&previous_state,
-                                                 preference_rollback_error,
-                                                 sizeof(preference_rollback_error))) {
+        if (!lockdockd_restore_preferred_display(
+                &previous_state, preference_rollback_error,
+                sizeof(preference_rollback_error))) {
             lockdockd_set_rollback_error(error, error_size, operation_error,
                                          preference_rollback_error, NULL);
         } else {
@@ -839,12 +840,11 @@ static bool lockdockd_apply_set_state(
         return false;
     }
 
-    if (!lockdockd_preferences_save_preferred_display(preferred_identity,
-                                                      operation_error,
-                                                      sizeof(operation_error))) {
-        if (!lockdockd_restore_preferred_display(&previous_state,
-                                                 preference_rollback_error,
-                                                 sizeof(preference_rollback_error))) {
+    if (!lockdockd_preferences_save_preferred_display(
+            preferred_identity, operation_error, sizeof(operation_error))) {
+        if (!lockdockd_restore_preferred_display(
+                &previous_state, preference_rollback_error,
+                sizeof(preference_rollback_error))) {
             /* Keep rolling back runtime even if preferences rollback fails. */
         }
 

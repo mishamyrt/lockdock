@@ -10,6 +10,7 @@
 bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
                                  char *buffer,
                                  size_t buffer_size);
+void lockdockd_invalidate_display_name_cache(void);
 bool lockdockd_is_accessibility_trusted(void);
 LockDockdDockOrientation lockdockd_get_dock_orientation(void);
 CGDirectDisplayID lockdockd_get_dock_display(void);

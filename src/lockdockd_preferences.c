@@ -179,8 +179,7 @@ bool lockdockd_preferences_load_preferred_display(
     return true;
 }
 
-bool lockdockd_preferences_clear_preferred_display(char *error,
-                                                   size_t error_size) {
+bool lockdockd_preferences_clear_preferred_display(char *error, size_t error_size) {
     CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_UUID_KEY, NULL,
                              LOCKDOCKD_PREFERENCES_DOMAIN);
     CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_BUILTIN_KEY, NULL,

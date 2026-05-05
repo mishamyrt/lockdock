@@ -32,8 +32,7 @@ typedef enum {
 uint32_t lockdockd_get_active_displays(CGDirectDisplayID *displays,
                                        uint32_t max_displays);
 int lockdockd_find_display_index(CGDirectDisplayID display_id);
-bool lockdockd_display_identity_is_valid(
-    const LockDockdDisplayIdentity *identity);
+bool lockdockd_display_identity_is_valid(const LockDockdDisplayIdentity *identity);
 bool lockdockd_copy_display_identity(CGDirectDisplayID display_id,
                                      LockDockdDisplayIdentity *identity_out);
 bool lockdockd_find_active_display_by_identity(

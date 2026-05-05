@@ -13,8 +13,7 @@ typedef struct {
     CGFloat end;
 } LockDockdOverlap;
 
-bool lockdockd_display_identity_is_valid(
-    const LockDockdDisplayIdentity *identity) {
+bool lockdockd_display_identity_is_valid(const LockDockdDisplayIdentity *identity) {
     if (identity == NULL) {
         return false;
     }
