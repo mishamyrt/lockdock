@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1](https://github.com/mishamyrt/lockdock/compare/v0.1.0..v0.1.1) - 2026-05-05
+
+### 🐛 Bug Fixes
+
+- Avoid ipc message trancuation
+
+### 🚜 Refactor
+
+- Re-organize imports
+
+### 📚 Documentation
+
+- Add badges
+
 ## [0.1.0](https://github.com/mishamyrt/lockdock/compare/..v0.1.0) - 2026-05-05
 
 ### 🚀 Features
