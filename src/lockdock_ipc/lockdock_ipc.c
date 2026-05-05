@@ -947,6 +947,12 @@ bool lockdock_ipc_copy_socket_path(char *buffer,
         return false;
     }
 
+    if (strlen(buffer) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
+        lockdock_ipc_set_error(error, error_size,
+                               "Socket path is too long for a Unix domain socket");
+        return false;
+    }
+
     return true;
 }
 
@@ -1187,7 +1193,7 @@ bool lockdock_ipc_serialize_result_response_json(const LockDockIpcResult *result
         buffer[0] = '\0';
 
         if (!lockdock_ipc_append_bytes(buffer, buffer_size, &used,
-                                       "{\"success\":false,\"reason\":", 27) ||
+                                       "{\"success\":false,\"reason\":", 26) ||
             !lockdock_ipc_append_json_string(buffer, buffer_size, &used,
                                              result->reason) ||
             !lockdock_ipc_append_bytes(buffer, buffer_size, &used, "}", 1)) {
