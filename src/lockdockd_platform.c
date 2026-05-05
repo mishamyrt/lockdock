@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +46,7 @@ static LockDockdDisplayNameEntry
 static size_t lockdockd_display_name_cache_count = 0;
 static time_t lockdockd_display_name_cache_last_refresh_attempt_at = 0;
 static bool lockdockd_display_name_cache_needs_refresh = true;
+static _Atomic uint32_t g_dock_orientation_cache = 0;
 
 static void lockdockd_clear_display_name_cache_entries(void) {
     memset(lockdockd_display_name_cache, 0, sizeof(lockdockd_display_name_cache));
@@ -646,7 +648,7 @@ static CGDirectDisplayID lockdockd_get_dock_display_via_accessibility(void) {
     return 0;
 }
 
-LockDockdDockOrientation lockdockd_get_dock_orientation(void) {
+static LockDockdDockOrientation lockdockd_copy_dock_orientation_value(void) {
     CFPropertyListRef value =
         CFPreferencesCopyAppValue(CFSTR("orientation"), CFSTR("com.apple.dock"));
 
@@ -673,16 +675,63 @@ LockDockdDockOrientation lockdockd_get_dock_orientation(void) {
     return LOCKDOCKD_ORIENT_BOTTOM;
 }
 
-CGDirectDisplayID lockdockd_get_dock_display(void) {
-    CGRect dock_bounds = CGRectZero;
-    CGDirectDisplayID dock_display = 0;
+void lockdockd_invalidate_dock_orientation_cache(void) {
+    atomic_store(&g_dock_orientation_cache, 0);
+}
 
-    if (lockdockd_copy_dock_window_bounds(&dock_bounds)) {
-        dock_display = lockdockd_display_for_rect(dock_bounds);
-        if (dock_display != 0) {
-            return dock_display;
-        }
+LockDockdDockOrientation lockdockd_get_dock_orientation(void) {
+    uint32_t cached = atomic_load(&g_dock_orientation_cache);
+
+    if (cached != 0) {
+        return (LockDockdDockOrientation)(cached - 1);
+    }
+
+    LockDockdDockOrientation orientation = lockdockd_copy_dock_orientation_value();
+
+    atomic_store(&g_dock_orientation_cache, (uint32_t)orientation + 1);
+    return orientation;
+}
+
+void lockdockd_reset_dock_probe(LockDockdDockProbe *probe) {
+    if (probe == NULL) {
+        return;
+    }
+
+    memset(probe, 0, sizeof(*probe));
+}
+
+bool lockdockd_capture_dock_probe(LockDockdDockProbe *probe) {
+    if (probe == NULL) {
+        return false;
+    }
+
+    lockdockd_reset_dock_probe(probe);
+
+    if (!lockdockd_copy_dock_window_bounds(&probe->window_bounds)) {
+        return false;
+    }
+
+    probe->has_window_bounds = true;
+    probe->window_display = lockdockd_display_for_rect(probe->window_bounds);
+    return true;
+}
+
+CGDirectDisplayID lockdockd_resolve_dock_probe(const LockDockdDockProbe *probe,
+                                               bool allow_slow_fallback) {
+    if (probe != NULL && probe->window_display != 0) {
+        return probe->window_display;
+    }
+
+    if (!allow_slow_fallback) {
+        return 0;
     }
 
     return lockdockd_get_dock_display_via_accessibility();
+}
+
+CGDirectDisplayID lockdockd_get_dock_display(void) {
+    LockDockdDockProbe probe;
+
+    lockdockd_capture_dock_probe(&probe);
+    return lockdockd_resolve_dock_probe(&probe, true);
 }

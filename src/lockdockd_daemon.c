@@ -59,6 +59,7 @@ static void lockdockd_notify_daemon(void) {
 
 static void lockdockd_mark_display_state_dirty(void) {
     lockdockd_invalidate_display_name_cache();
+    lockdockd_invalidate_dock_orientation_cache();
     atomic_store(&g_display_state_dirty, true);
     lockdockd_notify_daemon();
 }
@@ -831,14 +832,11 @@ static void lockdockd_close_wakeup_pipe(void) {
     }
 }
 
-static bool lockdockd_make_fd_nonblocking(int fd,
-                                          char *error,
-                                          size_t error_size) {
+static bool lockdockd_make_fd_nonblocking(int fd, char *error, size_t error_size) {
     int flags = fcntl(fd, F_GETFL, 0);
 
     if (flags < 0) {
-        snprintf(error, error_size, "Failed to read fd flags: %s",
-                 strerror(errno));
+        snprintf(error, error_size, "Failed to read fd flags: %s", strerror(errno));
         return false;
     }
 
@@ -858,10 +856,8 @@ static bool lockdockd_open_wakeup_pipe(char *error, size_t error_size) {
         return false;
     }
 
-    if (!lockdockd_make_fd_nonblocking(g_daemon_wakeup_pipe[0], error,
-                                       error_size) ||
-        !lockdockd_make_fd_nonblocking(g_daemon_wakeup_pipe[1], error,
-                                       error_size)) {
+    if (!lockdockd_make_fd_nonblocking(g_daemon_wakeup_pipe[0], error, error_size) ||
+        !lockdockd_make_fd_nonblocking(g_daemon_wakeup_pipe[1], error, error_size)) {
         lockdockd_close_wakeup_pipe();
         return false;
     }

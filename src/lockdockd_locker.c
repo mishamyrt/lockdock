@@ -169,8 +169,7 @@ static void *lockdockd_locker_thread_main(void *user_info) {
     if (g_event_source == NULL) {
         CFRelease(g_event_tap);
         g_event_tap = NULL;
-        lockdockd_locker_publish_thread_failure(
-            "Failed to create event tap source");
+        lockdockd_locker_publish_thread_failure("Failed to create event tap source");
         return NULL;
     }
 
@@ -234,8 +233,8 @@ static bool lockdockd_locker_ensure_tap(char *error, size_t error_size) {
         lockdockd_locker_join_thread(stale_thread);
     }
 
-    if (pthread_create(&g_event_thread, NULL, lockdockd_locker_thread_main,
-                       NULL) != 0) {
+    if (pthread_create(&g_event_thread, NULL, lockdockd_locker_thread_main, NULL) !=
+        0) {
         pthread_mutex_lock(&g_event_thread_mutex);
         g_event_thread_starting = false;
         pthread_mutex_unlock(&g_event_thread_mutex);
@@ -294,6 +293,7 @@ bool lockdockd_locker_set_target(CGDirectDisplayID display_id,
         return false;
     }
 
+    lockdockd_invalidate_dock_orientation_cache();
     atomic_store(&g_locked_display, display_id);
     return true;
 }

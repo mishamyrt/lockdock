@@ -165,26 +165,59 @@ static void lockdockd_post_edge_nudge(CGEventSourceRef source,
     CFRelease(event);
 }
 
-static void lockdockd_wait_for_dock_relocation(CGEventSourceRef source,
+static bool lockdockd_probe_dock_display(CGDirectDisplayID display_id,
+                                         LockDockdDockProbe *probe_out) {
+    LockDockdDockProbe probe;
+
+    lockdockd_reset_dock_probe(&probe);
+    lockdockd_capture_dock_probe(&probe);
+
+    if (probe_out != NULL) {
+        *probe_out = probe;
+    }
+
+    return lockdockd_resolve_dock_probe(&probe, false) == display_id;
+}
+
+static bool lockdockd_wait_for_dock_relocation(CGEventSourceRef source,
                                                CGPoint edge,
                                                LockDockdDockOrientation orientation,
-                                               CGDirectDisplayID display_id) {
+                                               CGDirectDisplayID display_id,
+                                               LockDockdDockProbe *probe_out) {
+    LockDockdDockProbe probe;
+
+    lockdockd_reset_dock_probe(&probe);
+
     for (int i = 0; i < 60; i++) {
         lockdockd_post_edge_nudge(source, edge, orientation);
         usleep(15 * 1000);
 
-        if (((i + 1) % 3) == 0 && lockdockd_get_dock_display() == display_id) {
-            return;
+        if (((i + 1) % 3) == 0 && lockdockd_probe_dock_display(display_id, &probe)) {
+            if (probe_out != NULL) {
+                *probe_out = probe;
+            }
+
+            return true;
         }
     }
 
     for (int i = 0; i < 8; i++) {
-        if (lockdockd_get_dock_display() == display_id) {
-            return;
+        if (lockdockd_probe_dock_display(display_id, &probe)) {
+            if (probe_out != NULL) {
+                *probe_out = probe;
+            }
+
+            return true;
         }
 
         usleep(10 * 1000);
     }
+
+    if (probe_out != NULL) {
+        *probe_out = probe;
+    }
+
+    return false;
 }
 
 static void lockdockd_smooth_move(CGEventSourceRef source,
@@ -213,17 +246,21 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
     bool success = false;
     CGEventSourceRef source = NULL;
     LockDockdSafeSegment safe_segment;
+    LockDockdDockProbe dock_probe;
     CGPoint approach = CGPointZero;
     CGPoint edge = CGPointZero;
     CGDirectDisplayID new_display;
+    bool relocated_via_fast_probe = false;
 
     if (!lockdockd_validate_display(display_id, error, error_size)) {
         return false;
     }
 
     bounds = CGDisplayBounds(display_id);
+    lockdockd_invalidate_dock_orientation_cache();
     orientation = lockdockd_get_dock_orientation();
     old_position = lockdockd_current_mouse_location();
+    lockdockd_reset_dock_probe(&dock_probe);
 
     source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
     if (source != NULL) {
@@ -269,9 +306,14 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
     usleep(30 * 1000);
 
     lockdockd_smooth_move(source, approach, edge, 10, 15 * 1000);
-    lockdockd_wait_for_dock_relocation(source, edge, orientation, display_id);
+    relocated_via_fast_probe = lockdockd_wait_for_dock_relocation(
+        source, edge, orientation, display_id, &dock_probe);
 
-    new_display = lockdockd_get_dock_display();
+    if (!relocated_via_fast_probe) {
+        lockdockd_capture_dock_probe(&dock_probe);
+    }
+
+    new_display = lockdockd_resolve_dock_probe(&dock_probe, true);
     if (new_display == display_id) {
         success = true;
     } else if (new_display == 0) {
