@@ -1,16 +1,14 @@
 #include "lockdockd_daemon.h"
 
-#include "lockdockd_ipc.h"
 #include "lockdockd_locker.h"
 #include "lockdockd_platform.h"
 #include "lockdockd_preferences.h"
-#include "lockdockd_request.h"
 #include "lockdockd_runtime.h"
+#include "../lockdock_ipc/lockdock_ipc.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <stdarg.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -88,108 +86,25 @@ static void lockdockd_set_error(char *buffer,
     snprintf(buffer, buffer_size, "%s", message);
 }
 
-static bool lockdockd_append_bytes(char *buffer,
-                                   size_t buffer_size,
-                                   size_t *used,
-                                   const char *data,
-                                   size_t data_size) {
-    if (*used + data_size >= buffer_size) {
-        return false;
+static void lockdockd_result_response(bool success,
+                                      const char *reason,
+                                      char *buffer,
+                                      size_t buffer_size) {
+    LockDockIpcResult result;
+    char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
+
+    memset(&result, 0, sizeof(result));
+    result.success = success;
+
+    if (!success && reason != NULL) {
+        snprintf(result.reason, sizeof(result.reason), "%s", reason);
     }
 
-    memcpy(buffer + *used, data, data_size);
-    *used += data_size;
-    buffer[*used] = '\0';
-    return true;
-}
-
-static bool lockdockd_append_format(char *buffer,
-                                    size_t buffer_size,
-                                    size_t *used,
-                                    const char *format,
-                                    ...) {
-    va_list args;
-    int written;
-
-    va_start(args, format);
-    written = vsnprintf(buffer + *used, buffer_size - *used, format, args);
-    va_end(args);
-
-    if (written < 0 || *used + (size_t)written >= buffer_size) {
-        return false;
-    }
-
-    *used += (size_t)written;
-    return true;
-}
-
-static bool lockdockd_append_json_string(char *buffer,
-                                         size_t buffer_size,
-                                         size_t *used,
-                                         const char *text) {
-    const unsigned char *cursor = (const unsigned char *)text;
-
-    if (!lockdockd_append_bytes(buffer, buffer_size, used, "\"", 1)) {
-        return false;
-    }
-
-    while (cursor != NULL && *cursor != '\0') {
-        char escaped[8];
-        size_t escaped_size = 0;
-
-        if (*cursor == '"' || *cursor == '\\') {
-            escaped[0] = '\\';
-            escaped[1] = (char)*cursor;
-            escaped_size = 2;
-        } else if (*cursor == '\n') {
-            escaped[0] = '\\';
-            escaped[1] = 'n';
-            escaped_size = 2;
-        } else if (*cursor == '\r') {
-            escaped[0] = '\\';
-            escaped[1] = 'r';
-            escaped_size = 2;
-        } else if (*cursor == '\t') {
-            escaped[0] = '\\';
-            escaped[1] = 't';
-            escaped_size = 2;
-        } else if (*cursor < 0x20) {
-            snprintf(escaped, sizeof(escaped), "\\u%04x", *cursor);
-            escaped_size = strlen(escaped);
-        } else {
-            escaped[0] = (char)*cursor;
-            escaped_size = 1;
-        }
-
-        if (!lockdockd_append_bytes(buffer, buffer_size, used, escaped,
-                                    escaped_size)) {
-            return false;
-        }
-
-        cursor++;
-    }
-
-    return lockdockd_append_bytes(buffer, buffer_size, used, "\"", 1);
-}
-
-static void lockdockd_json_error_response(char *buffer,
-                                          size_t buffer_size,
-                                          const char *message) {
-    size_t used = 0;
-
-    if (!lockdockd_append_bytes(buffer, buffer_size, &used,
-                                "{\"success\":false,\"reason\":",
-                                strlen("{\"success\":false,\"reason\":")) ||
-        !lockdockd_append_json_string(buffer, buffer_size, &used, message) ||
-        !lockdockd_append_bytes(buffer, buffer_size, &used, "}", 1)) {
+    if (!lockdock_ipc_serialize_result_response_json(&result, buffer, buffer_size,
+                                                     error, sizeof(error))) {
         snprintf(buffer, buffer_size,
-                 "{\"success\":false,\"reason\":\"Internal "
-                 "error\"}");
+                 "{\"success\":false,\"reason\":\"Internal error\"}");
     }
-}
-
-static void lockdockd_success_response(char *buffer, size_t buffer_size) {
-    snprintf(buffer, buffer_size, "{\"success\":true}");
 }
 
 static void lockdockd_trim_request(char *request) {
@@ -212,7 +127,7 @@ static bool lockdockd_build_state_response(char *buffer,
                                            char *error,
                                            size_t error_size) {
     LockDockdStatus status;
-    size_t used = 0;
+    LockDockIpcState state_response;
     CGDirectDisplayID target_display = lockdockd_locker_get_target();
     int target_index = -1;
 
@@ -220,52 +135,25 @@ static bool lockdockd_build_state_response(char *buffer,
         return false;
     }
 
+    memset(&state_response, 0, sizeof(state_response));
+    state_response.display_count = status.display_count;
+    state_response.location_index = status.location_index;
+
     if (target_display != 0) {
         target_index = lockdockd_status_index_for_display(&status, target_display);
-    }
-
-    if (!lockdockd_append_bytes(buffer, buffer_size, &used, "{\"displays\":[", 13)) {
-        snprintf(error, error_size, "State response buffer is too small");
-        return false;
+        if (target_index >= 0) {
+            state_response.has_target = true;
+            state_response.target_index = target_index;
+        }
     }
 
     for (uint32_t i = 0; i < status.display_count; i++) {
-        char display_name[LOCKDOCKD_DISPLAY_NAME_BUFFER_SIZE];
-
-        lockdockd_copy_display_label(status.displays[i], display_name,
-                                     sizeof(display_name));
-
-        if (i > 0 && !lockdockd_append_bytes(buffer, buffer_size, &used, ",", 1)) {
-            snprintf(error, error_size, "State response buffer is too small");
-            return false;
-        }
-
-        if (!lockdockd_append_json_string(buffer, buffer_size, &used,
-                                          display_name)) {
-            snprintf(error, error_size, "State response buffer is too small");
-            return false;
-        }
+        lockdockd_copy_display_label(status.displays[i], state_response.displays[i],
+                                     sizeof(state_response.displays[i]));
     }
 
-    if (!lockdockd_append_format(buffer, buffer_size, &used, "],\"location\":%d",
-                                 status.location_index)) {
-        snprintf(error, error_size, "State response buffer is too small");
-        return false;
-    }
-
-    if (target_index >= 0 &&
-        !lockdockd_append_format(buffer, buffer_size, &used, ",\"target\":%d",
-                                 target_index)) {
-        snprintf(error, error_size, "State response buffer is too small");
-        return false;
-    }
-
-    if (!lockdockd_append_bytes(buffer, buffer_size, &used, "}", 1)) {
-        snprintf(error, error_size, "State response buffer is too small");
-        return false;
-    }
-
-    return true;
+    return lockdock_ipc_serialize_state_response_json(
+        &state_response, buffer, buffer_size, error, error_size);
 }
 
 static bool lockdockd_resolve_target_display(const LockDockdStatus *status,
@@ -582,7 +470,7 @@ static bool lockdockd_apply_set_state(
     return true;
 }
 
-static void lockdockd_handle_request(const LockDockdRequest *request,
+static void lockdockd_handle_request(const LockDockIpcRequest *request,
                                      char *response,
                                      size_t response_size) {
     char error[LOCKDOCKD_ERROR_BUFFER_SIZE];
@@ -591,56 +479,56 @@ static void lockdockd_handle_request(const LockDockdRequest *request,
     CGDirectDisplayID display_id = 0;
 
     if (request == NULL) {
-        lockdockd_json_error_response(response, response_size, "Internal error");
+        lockdockd_result_response(false, "Internal error", response, response_size);
         return;
     }
 
-    if (request->command == LOCKDOCKD_REQUEST_GET_STATE) {
+    if (request->command == LOCKDOCK_IPC_COMMAND_GET_STATE) {
         if (!lockdockd_build_state_response(response, response_size, error,
                                             sizeof(error))) {
-            lockdockd_json_error_response(response, response_size, error);
+            lockdockd_result_response(false, error, response, response_size);
         }
         return;
     }
 
-    if (request->command == LOCKDOCKD_REQUEST_UNLOCK) {
+    if (request->command == LOCKDOCK_IPC_COMMAND_UNLOCK) {
         if (!lockdockd_apply_unlock(error, sizeof(error))) {
-            lockdockd_json_error_response(response, response_size, error);
+            lockdockd_result_response(false, error, response, response_size);
             return;
         }
-        lockdockd_success_response(response, response_size);
+        lockdockd_result_response(true, NULL, response, response_size);
         return;
     }
 
-    if (request->command != LOCKDOCKD_REQUEST_SET_STATE) {
-        lockdockd_json_error_response(response, response_size, "Unknown command");
+    if (request->command != LOCKDOCK_IPC_COMMAND_SET_STATE) {
+        lockdockd_result_response(false, "Unknown command", response, response_size);
         return;
     }
 
     if (!lockdockd_query_status(&status, error, sizeof(error))) {
-        lockdockd_json_error_response(response, response_size, error);
+        lockdockd_result_response(false, error, response, response_size);
         return;
     }
 
     if (!lockdockd_resolve_target_display(&status, request->target, &display_id,
                                           error, sizeof(error))) {
-        lockdockd_json_error_response(response, response_size, error);
+        lockdockd_result_response(false, error, response, response_size);
         return;
     }
 
     if (!lockdockd_copy_display_identity(display_id, &preferred_identity)) {
-        lockdockd_json_error_response(response, response_size,
-                                      "Could not identify target display");
+        lockdockd_result_response(false, "Could not identify target display",
+                                  response, response_size);
         return;
     }
 
     if (!lockdockd_apply_set_state(&status, display_id, &preferred_identity, error,
                                    sizeof(error))) {
-        lockdockd_json_error_response(response, response_size, error);
+        lockdockd_result_response(false, error, response, response_size);
         return;
     }
 
-    lockdockd_success_response(response, response_size);
+    lockdockd_result_response(true, NULL, response, response_size);
 }
 
 static bool lockdockd_read_request(int fd,
@@ -758,9 +646,9 @@ static int lockdockd_open_server_socket(char *socket_path,
     int fd = -1;
     int probe_result;
 
-    if (!lockdockd_ipc_ensure_socket_dir(error, error_size) ||
-        !lockdockd_ipc_copy_socket_path(socket_path, socket_path_size, error,
-                                        error_size)) {
+    if (!lockdock_ipc_ensure_socket_dir(error, error_size) ||
+        !lockdock_ipc_copy_socket_path(socket_path, socket_path_size, error,
+                                       error_size)) {
         return -1;
     }
 
@@ -971,19 +859,20 @@ int lockdockd_run_daemon(void) {
             int client_fd = accept(listen_fd, NULL, NULL);
 
             if (client_fd >= 0) {
-                char request[LOCKDOCKD_IPC_MAX_MESSAGE];
-                char response[LOCKDOCKD_IPC_MAX_MESSAGE];
+                char request[LOCKDOCK_IPC_MAX_MESSAGE];
+                char response[LOCKDOCK_IPC_MAX_MESSAGE];
 
                 if (!lockdockd_read_request(client_fd, request, sizeof(request),
                                             error, sizeof(error))) {
-                    lockdockd_json_error_response(response, sizeof(response), error);
+                    lockdockd_result_response(false, error, response,
+                                              sizeof(response));
                 } else {
-                    LockDockdRequest parsed_request;
+                    LockDockIpcRequest parsed_request;
 
-                    if (!lockdockd_parse_request_json(request, &parsed_request,
-                                                      error, sizeof(error))) {
-                        lockdockd_json_error_response(response, sizeof(response),
-                                                      error);
+                    if (!lockdock_ipc_parse_request_json(request, &parsed_request,
+                                                         error, sizeof(error))) {
+                        lockdockd_result_response(false, error, response,
+                                                  sizeof(response));
                     } else {
                         lockdockd_handle_request(&parsed_request, response,
                                                  sizeof(response));

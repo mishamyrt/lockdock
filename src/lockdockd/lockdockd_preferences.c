@@ -1,6 +1,6 @@
 #include "lockdockd_preferences.h"
 
-#include "lockdockd_ipc.h"
+#include "lockdock_ipc.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdbool.h>
@@ -13,7 +13,7 @@
 #define LOCKDOCKD_PREFERRED_VENDOR_KEY CFSTR("preferredDisplayVendor")
 #define LOCKDOCKD_PREFERRED_MODEL_KEY CFSTR("preferredDisplayModel")
 #define LOCKDOCKD_PREFERRED_SERIAL_KEY CFSTR("preferredDisplaySerial")
-#define LOCKDOCKD_PREFERENCES_DOMAIN CFSTR(LOCKDOCKD_IPC_BUNDLE_ID)
+#define LOCKDOCKD_PREFERENCES_DOMAIN CFSTR(LOCKDOCK_IPC_BUNDLE_ID)
 
 static void lockdockd_set_error(char *buffer,
                                 size_t buffer_size,

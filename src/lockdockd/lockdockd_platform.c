@@ -1,11 +1,6 @@
 #include "lockdockd_platform.h"
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-function"
-#pragma clang diagnostic ignored "-Wunused-variable"
-#define JSON_TOKENIZER_IMPLEMENTATION
-#include "../thirdparty/json_tokenizer.h"
-#pragma clang diagnostic pop
+#include "../thirdparty/json.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -25,7 +20,6 @@
 
 #define LOCKDOCKD_MAX_DISPLAYS 32
 
-#define LOCKDOCKD_JSON_TOKENIZER_STACK_SIZE 4096
 #define LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
 
 typedef struct {
@@ -103,141 +97,253 @@ static void lockdockd_cache_display_name(LockDockdDisplayNameEntry *entries,
     (*entry_count)++;
 }
 
-static json_t *lockdockd_open_json_stream(FILE *stream) {
-    json_t *json = NULL;
+static bool lockdockd_json_name_equals(const json_string_t *name, const char *text) {
+    size_t text_length;
 
-    if (stream == NULL) {
-        return NULL;
-    }
-
-    json = (json_t *)JSON_REALLOC(NULL, NULL, sizeof(*json));
-    if (json == NULL) {
-        fprintf(stderr, "PANIC: Failed to allocate memory for json structure.");
-        exit(-1);
-    }
-
-    json->stack =
-        (uint8_t *)calloc(LOCKDOCKD_JSON_TOKENIZER_STACK_SIZE, sizeof(uint8_t));
-    if (json->stack == NULL) {
-        fprintf(stderr, "PANIC: Failed to allocate memory for json stack.");
-        exit(-1);
-    }
-
-    json->lc = json__start;
-    json->col = 1;
-    json->row = 1;
-    json->sc = 0;
-    json->fp = stream;
-    json->level = 0;
-    json->stack_capacity = LOCKDOCKD_JSON_TOKENIZER_STACK_SIZE;
-    return json;
-}
-
-static bool lockdockd_parse_system_profiler_json(json_t *json,
-                                                 LockDockdDisplayNameEntry *entries,
-                                                 size_t *entry_count) {
-    LockDockdDisplayObjectState object_stack[32];
-    char current_name[128];
-    json_token_t token;
-    int object_depth = -1;
-
-    if (json == NULL || entries == NULL || entry_count == NULL) {
+    if (name == NULL || name->string == NULL || text == NULL) {
         return false;
     }
 
-    memset(object_stack, 0, sizeof(object_stack));
-    memset(current_name, 0, sizeof(current_name));
-    *entry_count = 0;
+    text_length = strlen(text);
+    return name->string_size == text_length &&
+           memcmp(name->string, text, text_length) == 0;
+}
 
-    while ((token = json_next_token(json)) != JSON_END_DOCUMENT) {
-        if (token == JSON_ERROR) {
-            json_close(json);
-            return false;
+static bool lockdockd_json_copy_string(const json_value_t *value,
+                                       char *buffer,
+                                       size_t buffer_size) {
+    json_string_t *string_value;
+
+    if (value == NULL || buffer == NULL || buffer_size == 0 ||
+        value->type != json_type_string) {
+        return false;
+    }
+
+    string_value = json_value_as_string((json_value_t *)value);
+    if (string_value == NULL || string_value->string == NULL ||
+        string_value->string_size >= buffer_size) {
+        return false;
+    }
+
+    memcpy(buffer, string_value->string, string_value->string_size);
+    buffer[string_value->string_size] = '\0';
+    return true;
+}
+
+static bool lockdockd_json_copy_number_text(const json_value_t *value,
+                                            char *buffer,
+                                            size_t buffer_size) {
+    json_number_t *number_value;
+
+    if (value == NULL || buffer == NULL || buffer_size == 0 ||
+        value->type != json_type_number) {
+        return false;
+    }
+
+    number_value = json_value_as_number((json_value_t *)value);
+    if (number_value == NULL || number_value->number == NULL ||
+        number_value->number_size >= buffer_size) {
+        return false;
+    }
+
+    memcpy(buffer, number_value->number, number_value->number_size);
+    buffer[number_value->number_size] = '\0';
+    return true;
+}
+
+static bool lockdockd_parse_display_id_json_value(
+    const json_value_t *value,
+    CGDirectDisplayID *display_id_out) {
+    char text[64];
+
+    if (value == NULL || display_id_out == NULL) {
+        return false;
+    }
+
+    if (value->type == json_type_string) {
+        return lockdockd_json_copy_string(value, text, sizeof(text)) &&
+               lockdockd_parse_display_id(text, display_id_out);
+    }
+
+    if (value->type == json_type_number) {
+        return lockdockd_json_copy_number_text(value, text, sizeof(text)) &&
+               lockdockd_parse_display_id(text, display_id_out);
+    }
+
+    return false;
+}
+
+static void lockdockd_collect_display_names_from_value(
+    const json_value_t *value,
+    LockDockdDisplayNameEntry *entries,
+    size_t *entry_count);
+
+static void lockdockd_collect_display_names_from_object(
+    const json_object_t *object,
+    LockDockdDisplayNameEntry *entries,
+    size_t *entry_count) {
+    LockDockdDisplayObjectState object_state;
+    json_object_element_t *element;
+
+    if (object == NULL || entries == NULL || entry_count == NULL) {
+        return;
+    }
+
+    memset(&object_state, 0, sizeof(object_state));
+
+    for (element = object->start; element != NULL; element = element->next) {
+        if (lockdockd_json_name_equals(element->name, "_name")) {
+            if (lockdockd_json_copy_string(element->value, object_state.name,
+                                           sizeof(object_state.name))) {
+                object_state.has_name = object_state.name[0] != '\0';
+            }
+            continue;
         }
 
-        switch (token) {
-            case JSON_START_OBJECT:
-                if (object_depth + 1 >=
-                    (int)(sizeof(object_stack) / sizeof(object_stack[0]))) {
-                    json_close(json);
-                    return false;
-                }
-                object_depth++;
-                memset(&object_stack[object_depth], 0,
-                       sizeof(object_stack[object_depth]));
-                current_name[0] = '\0';
-                break;
+        if (lockdockd_json_name_equals(element->name, "_spdisplays_displayID")) {
+            object_state.has_display_id = lockdockd_parse_display_id_json_value(
+                element->value, &object_state.display_id);
+            object_state.prefers_display_id = object_state.has_display_id;
+            continue;
+        }
 
-            case JSON_END_OBJECT:
-                if (object_depth >= 0 && object_stack[object_depth].has_display_id &&
-                    object_stack[object_depth].has_name) {
-                    lockdockd_cache_display_name(
-                        entries, entry_count, object_stack[object_depth].display_id,
-                        object_stack[object_depth].name);
-                }
-                if (object_depth >= 0) {
-                    object_depth--;
-                }
-                current_name[0] = '\0';
-                break;
-
-            case JSON_NAME:
-                snprintf(current_name, sizeof(current_name), "%s",
-                         json_get_name(json) == NULL ? "" : json_get_name(json));
-                break;
-
-            case JSON_STRING:
-            case JSON_UINT64:
-            case JSON_INT64:
-                if (object_depth >= 0 && current_name[0] != '\0') {
-                    const char *value = json_get_value(json);
-
-                    if (value != NULL) {
-                        if (strcmp(current_name, "_name") == 0) {
-                            snprintf(object_stack[object_depth].name,
-                                     sizeof(object_stack[object_depth].name), "%s",
-                                     value);
-                            object_stack[object_depth].has_name =
-                                object_stack[object_depth].name[0] != '\0';
-                        } else if (strcmp(current_name, "_spdisplays_displayID") ==
-                                   0) {
-                            object_stack[object_depth].has_display_id =
-                                lockdockd_parse_display_id(
-                                    value, &object_stack[object_depth].display_id);
-                            object_stack[object_depth].prefers_display_id =
-                                object_stack[object_depth].has_display_id;
-                        } else if (!object_stack[object_depth].prefers_display_id &&
-                                   strcmp(current_name, "_spdisplays_CGSDID") == 0) {
-                            object_stack[object_depth].has_display_id =
-                                lockdockd_parse_display_id(
-                                    value, &object_stack[object_depth].display_id);
-                        }
-                    }
-                }
-                current_name[0] = '\0';
-                break;
-
-            default:
-                current_name[0] = '\0';
-                break;
+        if (!object_state.prefers_display_id &&
+            lockdockd_json_name_equals(element->name, "_spdisplays_CGSDID")) {
+            object_state.has_display_id = lockdockd_parse_display_id_json_value(
+                element->value, &object_state.display_id);
         }
     }
 
-    json_close(json);
-    return *entry_count > 0;
+    if (object_state.has_display_id && object_state.has_name) {
+        lockdockd_cache_display_name(entries, entry_count, object_state.display_id,
+                                     object_state.name);
+    }
+
+    for (element = object->start; element != NULL; element = element->next) {
+        lockdockd_collect_display_names_from_value(element->value, entries,
+                                                   entry_count);
+    }
+}
+
+static void lockdockd_collect_display_names_from_array(
+    const json_array_t *array,
+    LockDockdDisplayNameEntry *entries,
+    size_t *entry_count) {
+    json_array_element_t *element;
+
+    if (array == NULL || entries == NULL || entry_count == NULL) {
+        return;
+    }
+
+    for (element = array->start; element != NULL; element = element->next) {
+        lockdockd_collect_display_names_from_value(element->value, entries,
+                                                   entry_count);
+    }
+}
+
+static void lockdockd_collect_display_names_from_value(
+    const json_value_t *value,
+    LockDockdDisplayNameEntry *entries,
+    size_t *entry_count) {
+    if (value == NULL || entries == NULL || entry_count == NULL) {
+        return;
+    }
+
+    if (value->type == json_type_object) {
+        lockdockd_collect_display_names_from_object(
+            json_value_as_object((json_value_t *)value), entries, entry_count);
+        return;
+    }
+
+    if (value->type == json_type_array) {
+        lockdockd_collect_display_names_from_array(
+            json_value_as_array((json_value_t *)value), entries, entry_count);
+    }
+}
+
+static bool lockdockd_read_stream_to_buffer(FILE *stream,
+                                            char **buffer_out,
+                                            size_t *size_out) {
+    char *buffer = NULL;
+    size_t capacity = 4096;
+    size_t used = 0;
+
+    if (stream == NULL || buffer_out == NULL || size_out == NULL) {
+        return false;
+    }
+
+    buffer = (char *)malloc(capacity + 1);
+    if (buffer == NULL) {
+        return false;
+    }
+
+    while (true) {
+        size_t remaining = capacity - used;
+        size_t nread;
+
+        if (remaining == 0) {
+            size_t new_capacity = capacity * 2;
+            char *new_buffer = (char *)realloc(buffer, new_capacity + 1);
+
+            if (new_buffer == NULL) {
+                free(buffer);
+                return false;
+            }
+
+            buffer = new_buffer;
+            capacity = new_capacity;
+            remaining = capacity - used;
+        }
+
+        nread = fread(buffer + used, 1, remaining, stream);
+        used += nread;
+
+        if (nread < remaining) {
+            if (ferror(stream)) {
+                free(buffer);
+                return false;
+            }
+            break;
+        }
+    }
+
+    buffer[used] = '\0';
+    *buffer_out = buffer;
+    *size_out = used;
+    return true;
 }
 
 static bool lockdockd_parse_system_profiler_stream(
     FILE *stream,
     LockDockdDisplayNameEntry *entries,
     size_t *entry_count) {
-    json_t *json = lockdockd_open_json_stream(stream);
+    char *json_buffer = NULL;
+    size_t json_size = 0;
+    json_parse_result_t parse_result;
+    json_value_t *root = NULL;
+    bool parsed = false;
 
-    if (json == NULL) {
+    if (stream == NULL || entries == NULL || entry_count == NULL) {
         return false;
     }
 
-    return lockdockd_parse_system_profiler_json(json, entries, entry_count);
+    *entry_count = 0;
+    memset(&parse_result, 0, sizeof(parse_result));
+
+    if (!lockdockd_read_stream_to_buffer(stream, &json_buffer, &json_size)) {
+        return false;
+    }
+
+    root = json_parse_ex(json_buffer, json_size, json_parse_flags_default, NULL,
+                         NULL, &parse_result);
+    if (root != NULL) {
+        lockdockd_collect_display_names_from_value(root, entries, entry_count);
+        parsed = *entry_count > 0;
+    }
+
+    free(root);
+    free(json_buffer);
+    return parsed;
 }
 
 static bool lockdockd_wait_for_process(pid_t pid, int *status_out) {
@@ -312,6 +418,7 @@ static bool lockdockd_refresh_display_name_cache(void) {
     if (stream != NULL) {
         parsed =
             lockdockd_parse_system_profiler_stream(stream, entries, &entry_count);
+        fclose(stream);
     } else {
         close(pipefd[0]);
     }
