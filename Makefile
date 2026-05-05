@@ -31,7 +31,7 @@ IPC_SRCS = \
 	$(IPC_SRC_DIR)/lockdock_ipc.c
 IPC_OBJS = $(patsubst $(IPC_SRC_DIR)/%.c,$(IPC_BUILD_DIR)/%.o,$(IPC_SRCS))
 
-OPTFLAGS ?= -O3 -march=native -flto
+OPTFLAGS ?= -O3 -flto
 CFLAGS = -std=c11 -Wall -Wextra -DAPP_VERSION="\"$(VERSION)\"" -I$(IPC_SRC_DIR) $(OPTFLAGS)
 FRAMEWORKS = \
 	-framework CoreGraphics \
