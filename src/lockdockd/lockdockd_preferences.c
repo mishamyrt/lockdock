@@ -7,6 +7,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef LOCKDOCK_TESTING
+#include <stdlib.h>
+#endif
 
 #define LOCKDOCKD_PREFERRED_UUID_KEY CFSTR("preferredDisplayUUID")
 #define LOCKDOCKD_PREFERRED_BUILTIN_KEY CFSTR("preferredDisplayBuiltin")
@@ -14,6 +17,17 @@
 #define LOCKDOCKD_PREFERRED_MODEL_KEY CFSTR("preferredDisplayModel")
 #define LOCKDOCKD_PREFERRED_SERIAL_KEY CFSTR("preferredDisplaySerial")
 #define LOCKDOCKD_PREFERENCES_DOMAIN CFSTR(LOCKDOCK_IPC_BUNDLE_ID)
+#ifdef LOCKDOCK_TESTING
+#define LOCKDOCKD_TEST_PREFERENCES_DOMAIN_ENV "LOCKDOCK_TEST_PREFERENCES_DOMAIN"
+
+typedef struct {
+    bool has_value;
+    char domain[128];
+    LockDockdDisplayIdentity identity;
+} LockDockdTestPreferencesStore;
+
+static LockDockdTestPreferencesStore g_lockdockd_test_preferences_store = {0};
+#endif
 
 static void lockdockd_set_error(char *buffer,
                                 size_t buffer_size,
@@ -25,8 +39,62 @@ static void lockdockd_set_error(char *buffer,
     snprintf(buffer, buffer_size, "%s", message);
 }
 
+static CFStringRef lockdockd_preferences_copy_domain(void) {
+#ifdef LOCKDOCK_TESTING
+    const char *override_domain = getenv(LOCKDOCKD_TEST_PREFERENCES_DOMAIN_ENV);
+
+    if (override_domain != NULL && override_domain[0] != '\0') {
+        return CFStringCreateWithCString(kCFAllocatorDefault, override_domain,
+                                         kCFStringEncodingUTF8);
+    }
+#endif
+
+    return CFRetain(LOCKDOCKD_PREFERENCES_DOMAIN);
+}
+
+#ifdef LOCKDOCK_TESTING
+static bool lockdockd_preferences_use_test_store(void) {
+    const char *override_domain = getenv(LOCKDOCKD_TEST_PREFERENCES_DOMAIN_ENV);
+
+    if (override_domain == NULL || override_domain[0] == '\0') {
+        memset(&g_lockdockd_test_preferences_store, 0,
+               sizeof(g_lockdockd_test_preferences_store));
+        return false;
+    }
+
+    if (strcmp(g_lockdockd_test_preferences_store.domain, override_domain) != 0) {
+        memset(&g_lockdockd_test_preferences_store, 0,
+               sizeof(g_lockdockd_test_preferences_store));
+        snprintf(g_lockdockd_test_preferences_store.domain,
+                 sizeof(g_lockdockd_test_preferences_store.domain), "%s",
+                 override_domain);
+    }
+
+    return true;
+}
+#endif
+
 static bool lockdockd_preferences_sync(char *error, size_t error_size) {
-    if (CFPreferencesAppSynchronize(LOCKDOCKD_PREFERENCES_DOMAIN)) {
+#ifdef LOCKDOCK_TESTING
+    if (lockdockd_preferences_use_test_store()) {
+        (void)error;
+        (void)error_size;
+        return true;
+    }
+#endif
+
+    CFStringRef domain = lockdockd_preferences_copy_domain();
+    bool synchronized;
+
+    if (domain == NULL) {
+        lockdockd_set_error(error, error_size, "Failed to prepare preferences");
+        return false;
+    }
+
+    synchronized = CFPreferencesAppSynchronize(domain);
+    CFRelease(domain);
+
+    if (synchronized) {
         return true;
     }
 
@@ -38,25 +106,39 @@ static void lockdockd_preferences_set_uint32(CFStringRef key, uint32_t value) {
     int64_t signed_value = (int64_t)value;
     CFNumberRef number =
         CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &signed_value);
+    CFStringRef domain = lockdockd_preferences_copy_domain();
 
-    if (number == NULL) {
-        CFPreferencesSetAppValue(key, NULL, LOCKDOCKD_PREFERENCES_DOMAIN);
+    if (domain == NULL) {
         return;
     }
 
-    CFPreferencesSetAppValue(key, number, LOCKDOCKD_PREFERENCES_DOMAIN);
+    if (number == NULL) {
+        CFPreferencesSetAppValue(key, NULL, domain);
+        CFRelease(domain);
+        return;
+    }
+
+    CFPreferencesSetAppValue(key, number, domain);
     CFRelease(number);
+    CFRelease(domain);
 }
 
 static bool lockdockd_preferences_copy_uint32(CFStringRef key, uint32_t *value_out) {
     CFPropertyListRef value = NULL;
     int64_t signed_value = 0;
+    CFStringRef domain;
 
     if (value_out == NULL) {
         return false;
     }
 
-    value = CFPreferencesCopyAppValue(key, LOCKDOCKD_PREFERENCES_DOMAIN);
+    domain = lockdockd_preferences_copy_domain();
+    if (domain == NULL) {
+        return false;
+    }
+
+    value = CFPreferencesCopyAppValue(key, domain);
+    CFRelease(domain);
     if (value == NULL) {
         return false;
     }
@@ -75,12 +157,19 @@ static bool lockdockd_preferences_copy_uint32(CFStringRef key, uint32_t *value_o
 
 static bool lockdockd_preferences_copy_bool(CFStringRef key, bool *value_out) {
     CFPropertyListRef value = NULL;
+    CFStringRef domain;
 
     if (value_out == NULL) {
         return false;
     }
 
-    value = CFPreferencesCopyAppValue(key, LOCKDOCKD_PREFERENCES_DOMAIN);
+    domain = lockdockd_preferences_copy_domain();
+    if (domain == NULL) {
+        return false;
+    }
+
+    value = CFPreferencesCopyAppValue(key, domain);
+    CFRelease(domain);
     if (value == NULL) {
         return false;
     }
@@ -100,9 +189,24 @@ bool lockdockd_preferences_save_preferred_display(
     char *error,
     size_t error_size) {
     CFStringRef uuid = NULL;
+    CFStringRef domain = NULL;
 
     if (!lockdockd_display_identity_is_valid(identity)) {
         lockdockd_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+#ifdef LOCKDOCK_TESTING
+    if (lockdockd_preferences_use_test_store()) {
+        g_lockdockd_test_preferences_store.identity = *identity;
+        g_lockdockd_test_preferences_store.has_value = true;
+        return true;
+    }
+#endif
+
+    domain = lockdockd_preferences_copy_domain();
+    if (domain == NULL) {
+        lockdockd_set_error(error, error_size, "Failed to prepare preferences");
         return false;
     }
 
@@ -110,16 +214,16 @@ bool lockdockd_preferences_save_preferred_display(
         uuid = CFStringCreateWithCString(kCFAllocatorDefault, identity->uuid,
                                          kCFStringEncodingUTF8);
         if (uuid == NULL) {
+            CFRelease(domain);
             lockdockd_set_error(error, error_size, "Failed to encode display UUID");
             return false;
         }
     }
 
-    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_UUID_KEY, uuid,
-                             LOCKDOCKD_PREFERENCES_DOMAIN);
+    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_UUID_KEY, uuid, domain);
     CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_BUILTIN_KEY,
                              identity->is_builtin ? kCFBooleanTrue : kCFBooleanFalse,
-                             LOCKDOCKD_PREFERENCES_DOMAIN);
+                             domain);
     lockdockd_preferences_set_uint32(LOCKDOCKD_PREFERRED_VENDOR_KEY,
                                      identity->vendor_number);
     lockdockd_preferences_set_uint32(LOCKDOCKD_PREFERRED_MODEL_KEY,
@@ -130,6 +234,7 @@ bool lockdockd_preferences_save_preferred_display(
     if (uuid != NULL) {
         CFRelease(uuid);
     }
+    CFRelease(domain);
 
     return lockdockd_preferences_sync(error, error_size);
 }
@@ -138,6 +243,7 @@ bool lockdockd_preferences_load_preferred_display(
     LockDockdDisplayIdentity *identity_out) {
     CFPropertyListRef uuid_value = NULL;
     bool has_builtin = false;
+    CFStringRef domain;
 
     if (identity_out == NULL) {
         return false;
@@ -145,8 +251,24 @@ bool lockdockd_preferences_load_preferred_display(
 
     memset(identity_out, 0, sizeof(*identity_out));
 
-    uuid_value = CFPreferencesCopyAppValue(LOCKDOCKD_PREFERRED_UUID_KEY,
-                                           LOCKDOCKD_PREFERENCES_DOMAIN);
+#ifdef LOCKDOCK_TESTING
+    if (lockdockd_preferences_use_test_store()) {
+        if (!g_lockdockd_test_preferences_store.has_value) {
+            return false;
+        }
+
+        *identity_out = g_lockdockd_test_preferences_store.identity;
+        return lockdockd_display_identity_is_valid(identity_out);
+    }
+#endif
+
+    domain = lockdockd_preferences_copy_domain();
+    if (domain == NULL) {
+        return false;
+    }
+
+    uuid_value = CFPreferencesCopyAppValue(LOCKDOCKD_PREFERRED_UUID_KEY, domain);
+    CFRelease(domain);
     if (uuid_value != NULL) {
         if (CFGetTypeID(uuid_value) == CFStringGetTypeID()) {
             CFStringGetCString((CFStringRef)uuid_value, identity_out->uuid,
@@ -180,15 +302,27 @@ bool lockdockd_preferences_load_preferred_display(
 }
 
 bool lockdockd_preferences_clear_preferred_display(char *error, size_t error_size) {
-    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_UUID_KEY, NULL,
-                             LOCKDOCKD_PREFERENCES_DOMAIN);
-    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_BUILTIN_KEY, NULL,
-                             LOCKDOCKD_PREFERENCES_DOMAIN);
-    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_VENDOR_KEY, NULL,
-                             LOCKDOCKD_PREFERENCES_DOMAIN);
-    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_MODEL_KEY, NULL,
-                             LOCKDOCKD_PREFERENCES_DOMAIN);
-    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_SERIAL_KEY, NULL,
-                             LOCKDOCKD_PREFERENCES_DOMAIN);
+#ifdef LOCKDOCK_TESTING
+    if (lockdockd_preferences_use_test_store()) {
+        memset(&g_lockdockd_test_preferences_store.identity, 0,
+               sizeof(g_lockdockd_test_preferences_store.identity));
+        g_lockdockd_test_preferences_store.has_value = false;
+        return true;
+    }
+#endif
+
+    CFStringRef domain = lockdockd_preferences_copy_domain();
+
+    if (domain == NULL) {
+        lockdockd_set_error(error, error_size, "Failed to prepare preferences");
+        return false;
+    }
+
+    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_UUID_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_BUILTIN_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_VENDOR_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_MODEL_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCKD_PREFERRED_SERIAL_KEY, NULL, domain);
+    CFRelease(domain);
     return lockdockd_preferences_sync(error, error_size);
 }
