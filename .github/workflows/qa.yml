@@ -1,0 +1,26 @@
+name: Quality Assurance
+
+on:
+    pull_request:
+    push:
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        name: Build
+        strategy:
+            matrix:
+                runner: [macos-26-intel, macos-26]
+        runs-on: ${{ matrix.runner }}
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6.0.2
+
+            - name: Build
+              run: make
+
+            - name: Validate
+              run: ./build/lockdock version
