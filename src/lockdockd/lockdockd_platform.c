@@ -21,10 +21,13 @@
 #define LOCKDOCKD_MAX_DISPLAYS 32
 
 #define LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
+#define LOCKDOCKD_DISPLAY_ID_MAX 64
+#define LOCKDOCKD_DISPLAY_NAME_MAX 256
+#define LOCKDOCKD_STREAM_BUF_INITIAL_CAP 4096
 
 typedef struct {
     CGDirectDisplayID display_id;
-    char name[256];
+    char name[LOCKDOCKD_DISPLAY_NAME_MAX];
 } LockDockdDisplayNameEntry;
 
 typedef struct {
@@ -32,7 +35,7 @@ typedef struct {
     bool has_name;
     bool prefers_display_id;
     CGDirectDisplayID display_id;
-    char name[256];
+    char name[LOCKDOCKD_DISPLAY_NAME_MAX];
 } LockDockdDisplayObjectState;
 
 static LockDockdDisplayNameEntry
@@ -62,7 +65,7 @@ static bool lockdockd_parse_display_id(const char *value,
         return false;
     }
 
-    parsed = strtoul(value, &endptr, 10);
+    parsed = strtoul(value, &endptr, 10);  // NOLINT
     if (endptr == value || *endptr != '\0' || parsed == 0 || parsed > UINT32_MAX) {
         return false;
     }
@@ -154,7 +157,7 @@ static bool lockdockd_json_copy_number_text(const json_value_t *value,
 static bool lockdockd_parse_display_id_json_value(
     const json_value_t *value,
     CGDirectDisplayID *display_id_out) {
-    char text[64];
+    char text[LOCKDOCKD_DISPLAY_ID_MAX];
 
     if (value == NULL || display_id_out == NULL) {
         return false;
@@ -265,7 +268,7 @@ static bool lockdockd_read_stream_to_buffer(FILE *stream,
                                             char **buffer_out,
                                             size_t *size_out) {
     char *buffer = NULL;
-    size_t capacity = 4096;
+    size_t capacity = LOCKDOCKD_STREAM_BUF_INITIAL_CAP;
     size_t used = 0;
 
     if (stream == NULL || buffer_out == NULL || size_out == NULL) {
@@ -396,7 +399,7 @@ static bool lockdockd_refresh_display_name_cache(void) {
         close(pipefd[0]);
 
         if (dup2(pipefd[1], STDOUT_FILENO) < 0) {
-            _exit(127);
+            _exit(127);  // NOLINT
         }
 
         stderr_fd = open("/dev/null", O_WRONLY);
@@ -404,13 +407,13 @@ static bool lockdockd_refresh_display_name_cache(void) {
             if (stderr_fd >= 0) {
                 close(stderr_fd);
             }
-            _exit(127);
+            _exit(127);  // NOLINT
         }
 
         close(stderr_fd);
         close(pipefd[1]);
         execv(argv[0], (char *const *)argv);
-        _exit(127);
+        _exit(127);  // NOLINT
     }
 
     close(pipefd[1]);

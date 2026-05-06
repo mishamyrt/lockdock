@@ -23,7 +23,7 @@ typedef struct {
     CGFloat center;
 } LockDockdSafeSegment;
 
-typedef enum {
+typedef enum : uint8_t {
     LOCKDOCKD_ORIENT_BOTTOM = 0,
     LOCKDOCKD_ORIENT_LEFT = 1,
     LOCKDOCKD_ORIENT_RIGHT = 2,

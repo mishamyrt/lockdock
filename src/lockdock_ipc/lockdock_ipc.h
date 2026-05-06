@@ -6,22 +6,19 @@
 #include <stdint.h>
 
 #define LOCKDOCK_IPC_BUNDLE_ID "co.myrt.lockdockd"
+#define LOCKDOCK_IPC_MAX_MESSAGE 4096
+#define LOCKDOCK_IPC_MAX_DISPLAYS 32
+#define LOCKDOCK_IPC_DISPLAY_NAME_SIZE 256
+#define LOCKDOCK_IPC_REASON_SIZE 512
 
-enum : uint16_t {
-    LOCKDOCK_IPC_MAX_MESSAGE = 4096,
-    LOCKDOCK_IPC_MAX_DISPLAYS = 32,
-    LOCKDOCK_IPC_DISPLAY_NAME_SIZE = 256,
-    LOCKDOCK_IPC_REASON_SIZE = 512
-};
-
-enum : uint8_t {
+typedef enum : uint8_t {
     LOCKDOCK_IPC_COMMAND_NONE = 0,
     LOCKDOCK_IPC_COMMAND_GET_STATE,
     LOCKDOCK_IPC_COMMAND_SET_STATE,
     LOCKDOCK_IPC_COMMAND_UNLOCK
-};
+} LockDockIpcCommand;
 
-typedef uint8_t LockDockIpcCommand;
+// typedef uint8_t LockDockIpcCommand;
 
 typedef struct {
     LockDockIpcCommand command;

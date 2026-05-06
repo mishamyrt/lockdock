@@ -11,7 +11,9 @@
 #define APP_VERSION "dev"
 #endif
 
-#define LOCKDOCK_CLI_MESSAGE_SIZE 1024
+enum {
+  LOCKDOCK_CLI_MESSAGE_SIZE = 1024
+};
 
 static int cmd_enable(void) {
     char message[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];

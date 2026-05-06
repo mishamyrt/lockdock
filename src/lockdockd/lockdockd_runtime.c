@@ -10,6 +10,15 @@
 #include <string.h>
 #include <unistd.h>
 
+static const int LOCKDOCKD_RELOCATION_NUDGE_ATTEMPTS = 60;
+static const int LOCKDOCKD_RELOCATION_PROBE_INTERVAL = 3;
+static const useconds_t LOCKDOCKD_RELOCATION_NUDGE_DELAY_US = 15000;
+static const int LOCKDOCKD_RELOCATION_VERIFY_ATTEMPTS = 8;
+static const useconds_t LOCKDOCKD_RELOCATION_VERIFY_DELAY_US = 10000;
+static const useconds_t LOCKDOCKD_RELOCATION_APPROACH_DELAY_US = 30000;
+static const int LOCKDOCKD_RELOCATION_EDGE_MOVE_STEPS = 10;
+static const useconds_t LOCKDOCKD_RELOCATION_EDGE_MOVE_DELAY_US = 15000;
+
 static void lockdockd_set_error(char *buffer,
                                 size_t buffer_size,
                                 const char *message) {
@@ -188,11 +197,12 @@ static bool lockdockd_wait_for_dock_relocation(CGEventSourceRef source,
 
     lockdockd_reset_dock_probe(&probe);
 
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < LOCKDOCKD_RELOCATION_NUDGE_ATTEMPTS; i++) {
         lockdockd_post_edge_nudge(source, edge, orientation);
-        usleep(15 * 1000);
+        usleep(LOCKDOCKD_RELOCATION_NUDGE_DELAY_US);
 
-        if (((i + 1) % 3) == 0 && lockdockd_probe_dock_display(display_id, &probe)) {
+        if (((i + 1) % LOCKDOCKD_RELOCATION_PROBE_INTERVAL) == 0 &&
+            lockdockd_probe_dock_display(display_id, &probe)) {
             if (probe_out != NULL) {
                 *probe_out = probe;
             }
@@ -201,7 +211,7 @@ static bool lockdockd_wait_for_dock_relocation(CGEventSourceRef source,
         }
     }
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < LOCKDOCKD_RELOCATION_VERIFY_ATTEMPTS; i++) {
         if (lockdockd_probe_dock_display(display_id, &probe)) {
             if (probe_out != NULL) {
                 *probe_out = probe;
@@ -210,7 +220,7 @@ static bool lockdockd_wait_for_dock_relocation(CGEventSourceRef source,
             return true;
         }
 
-        usleep(10 * 1000);
+        usleep(LOCKDOCKD_RELOCATION_VERIFY_DELAY_US);
     }
 
     if (probe_out != NULL) {
@@ -226,9 +236,9 @@ static void lockdockd_smooth_move(CGEventSourceRef source,
                                   int steps,
                                   useconds_t delay_us) {
     for (int step = 1; step <= steps; step++) {
-        CGFloat t = (CGFloat)step / (CGFloat)steps;
-        CGPoint point =
-            CGPointMake(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+        CGFloat progress = (CGFloat)step / (CGFloat)steps;
+        CGPoint point = CGPointMake(from.x + ((to.x - from.x) * progress),
+                                    from.y + ((to.y - from.y) * progress));
 
         CGWarpMouseCursorPosition(point);
         lockdockd_post_move_event(source, point);
@@ -303,9 +313,11 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
 
     CGWarpMouseCursorPosition(approach);
     lockdockd_post_move_event(source, approach);
-    usleep(30 * 1000);
+    usleep(LOCKDOCKD_RELOCATION_APPROACH_DELAY_US);
 
-    lockdockd_smooth_move(source, approach, edge, 10, 15 * 1000);
+    lockdockd_smooth_move(source, approach, edge,
+                          LOCKDOCKD_RELOCATION_EDGE_MOVE_STEPS,
+                          LOCKDOCKD_RELOCATION_EDGE_MOVE_DELAY_US);
     relocated_via_fast_probe = lockdockd_wait_for_dock_relocation(
         source, edge, orientation, display_id, &dock_probe);
 

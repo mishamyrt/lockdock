@@ -16,7 +16,7 @@
 #define LOCKDOCKD_LOCKER_ERROR_BUFFER_SIZE 256
 
 static _Atomic uint32_t g_locked_display = 0;
-static double g_lock_edge_zone = 4.0;
+static double g_lock_edge_zone = 4.0;  // NOLINT
 static CFMachPortRef g_event_tap = NULL;
 static CFRunLoopSourceRef g_event_source = NULL;
 static CFRunLoopRef g_event_run_loop = NULL;

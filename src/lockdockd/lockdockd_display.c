@@ -8,6 +8,7 @@
 #include <string.h>
 
 #define LOCKDOCKD_MAX_OVERLAPS 64
+#define LOCKDOCKD_MIN_OVERLAP 2.0
 
 typedef struct {
     CGFloat start;
@@ -155,7 +156,8 @@ static void lockdockd_update_best_safe_segment(LockDockdSafeSegment *best,
         best->start = start;
         best->end = end;
         best->width = width;
-        best->center = start + width / 2.0;
+        // NOLINTNEXTLINE cppcoreguidelines-avoid-magic-numbers
+        best->center = start + (width / 2.0);
     }
 }
 
@@ -236,7 +238,8 @@ static bool lockdockd_collect_display_overlap(CGDirectDisplayID display_id,
     overlap_start = fmax(collection->edge_min, other_min_along);
     overlap_end = fmin(collection->edge_max, other_max_along);
 
-    if (overlap_end > overlap_start && (overlap_end - overlap_start) > 2.0) {
+    if (overlap_end > overlap_start &&
+        (overlap_end - overlap_start) > LOCKDOCKD_MIN_OVERLAP) {
         collection->overlaps[collection->overlap_count].start = overlap_start;
         collection->overlaps[collection->overlap_count].end = overlap_end;
         collection->overlap_count++;
@@ -400,7 +403,9 @@ LockDockdSafeSegment lockdockd_find_safe_edge_segment(
     lockdockd_update_best_safe_segment(&best, pos, edge_max);
 
     if (best.width <= 0) {
-        best.center = edge_min + (edge_max - edge_min) / 2.0;
+        best.center =
+            edge_min + ((edge_max - edge_min) /
+                        2.0);  // NOLINT cppcoreguidelines-avoid-magic-numbers
         best.width = edge_max - edge_min;
     }
 

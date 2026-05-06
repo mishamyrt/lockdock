@@ -640,6 +640,8 @@ static int lockdockd_probe_existing_socket(const char *socket_path,
     return 0;
 }
 
+#define LOCKDOCKD_SOCKET_BACKLOG 8
+
 static int lockdockd_open_server_socket(char *socket_path,
                                         size_t socket_path_size,
                                         char *error,
@@ -680,7 +682,7 @@ static int lockdockd_open_server_socket(char *socket_path,
         return -1;
     }
 
-    if (listen(fd, 8) != 0) {
+    if (listen(fd, LOCKDOCKD_SOCKET_BACKLOG) != 0) {
         snprintf(error, error_size, "Failed to listen on daemon socket: %s",
                  strerror(errno));
         close(fd);
@@ -755,8 +757,10 @@ static bool lockdockd_open_wakeup_pipe(char *error, size_t error_size) {
     return true;
 }
 
+#define LOCKDOCKD_DRAIN_WAKEUP_PIPE_BUFFER 64
+
 static void lockdockd_drain_wakeup_pipe(void) {
-    char buffer[64];
+    char buffer[LOCKDOCKD_DRAIN_WAKEUP_PIPE_BUFFER];
 
     if (g_daemon_wakeup_pipe[0] < 0) {
         return;
