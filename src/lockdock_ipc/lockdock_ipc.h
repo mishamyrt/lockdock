@@ -6,17 +6,22 @@
 #include <stdint.h>
 
 #define LOCKDOCK_IPC_BUNDLE_ID "co.myrt.lockdockd"
-#define LOCKDOCK_IPC_MAX_MESSAGE 4096
-#define LOCKDOCK_IPC_MAX_DISPLAYS 32
-#define LOCKDOCK_IPC_DISPLAY_NAME_SIZE 256
-#define LOCKDOCK_IPC_REASON_SIZE 512
 
-typedef enum {
+enum : uint16_t {
+    LOCKDOCK_IPC_MAX_MESSAGE = 4096,
+    LOCKDOCK_IPC_MAX_DISPLAYS = 32,
+    LOCKDOCK_IPC_DISPLAY_NAME_SIZE = 256,
+    LOCKDOCK_IPC_REASON_SIZE = 512
+};
+
+enum : uint8_t {
     LOCKDOCK_IPC_COMMAND_NONE = 0,
     LOCKDOCK_IPC_COMMAND_GET_STATE,
     LOCKDOCK_IPC_COMMAND_SET_STATE,
     LOCKDOCK_IPC_COMMAND_UNLOCK
-} LockDockIpcCommand;
+};
+
+typedef uint8_t LockDockIpcCommand;
 
 typedef struct {
     LockDockIpcCommand command;
@@ -26,10 +31,10 @@ typedef struct {
 
 typedef struct {
     char displays[LOCKDOCK_IPC_MAX_DISPLAYS][LOCKDOCK_IPC_DISPLAY_NAME_SIZE];
-    uint32_t display_count;
     int location_index;
-    bool has_target;
     int target_index;
+    uint8_t display_count;
+    bool has_target;
 } LockDockIpcState;
 
 typedef struct {
@@ -37,11 +42,13 @@ typedef struct {
     char reason[LOCKDOCK_IPC_REASON_SIZE];
 } LockDockIpcResult;
 
-typedef enum {
+enum : uint8_t {
     LOCKDOCK_IPC_RESPONSE_NONE = 0,
     LOCKDOCK_IPC_RESPONSE_STATE,
     LOCKDOCK_IPC_RESPONSE_RESULT
-} LockDockIpcResponseKind;
+};
+
+typedef uint8_t LockDockIpcResponseKind;
 
 typedef struct {
     LockDockIpcResponseKind kind;

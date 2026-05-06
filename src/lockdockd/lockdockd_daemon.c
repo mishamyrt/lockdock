@@ -138,7 +138,7 @@ static bool lockdockd_build_state_response(char *buffer,
     }
 
     memset(&state_response, 0, sizeof(state_response));
-    state_response.display_count = status.display_count;
+    state_response.display_count = (uint8_t)status.display_count;
     state_response.location_index = status.location_index;
 
     if (target_display != 0) {

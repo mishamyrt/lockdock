@@ -15,6 +15,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+enum { LOCKDOCK_IPC_DECIMAL_BASE = 10, LOCKDOCK_IPC_FIELD_TEXT_SIZE = 64 };
+
 static void lockdock_ipc_set_error(char *buffer,
                                    size_t buffer_size,
                                    const char *message) {
@@ -70,7 +72,6 @@ static bool lockdock_ipc_mkdir_p(const char *path,
                                  char *error,
                                  size_t error_size) {
     char tmp[PATH_MAX];
-    size_t length;
 
     if (path == NULL || path[0] == '\0') {
         lockdock_ipc_set_error(error, error_size, "Directory path is empty");
@@ -82,7 +83,7 @@ static bool lockdock_ipc_mkdir_p(const char *path,
         return false;
     }
 
-    length = strlen(tmp);
+    size_t length = strlen(tmp);
     for (size_t i = 1; i < length; i++) {
         if (tmp[i] != '/') {
             continue;
@@ -131,14 +132,13 @@ static bool lockdock_ipc_append_format(char *buffer,
                                        const char *format,
                                        ...) {
     va_list args;
-    int written;
 
     if (buffer == NULL || used == NULL || format == NULL) {
         return false;
     }
 
     va_start(args, format);
-    written = vsnprintf(buffer + *used, buffer_size - *used, format, args);
+    int written = vsnprintf(buffer + *used, buffer_size - *used, format, args);
     va_end(args);
 
     if (written < 0 || *used + (size_t)written >= buffer_size) {
@@ -160,7 +160,7 @@ static bool lockdock_ipc_append_json_string(char *buffer,
     }
 
     while (cursor != NULL && *cursor != '\0') {
-        char escaped[8];
+        char escaped[sizeof("\\u001f")];
         size_t escaped_size = 0;
 
         if (*cursor == '"' || *cursor == '\\') {
@@ -179,7 +179,7 @@ static bool lockdock_ipc_append_json_string(char *buffer,
             escaped[0] = '\\';
             escaped[1] = 't';
             escaped_size = 2;
-        } else if (*cursor < 0x20) {
+        } else if (*cursor < ' ') {
             snprintf(escaped, sizeof(escaped), "\\u%04x", *cursor);
             escaped_size = strlen(escaped);
         } else {
@@ -361,7 +361,7 @@ static bool lockdock_ipc_parse_non_negative_int_text(const char *text,
     }
 
     if (text[0] == '-') {
-        long long parsed = strtoll(text, &endptr, 10);
+        long long parsed = strtoll(text, &endptr, LOCKDOCK_IPC_DECIMAL_BASE);
 
         if (endptr == text || *endptr != '\0') {
             snprintf(error, error_size, "Field '%s' must be an integer", field_name);
@@ -379,7 +379,8 @@ static bool lockdock_ipc_parse_non_negative_int_text(const char *text,
     }
 
     {
-        unsigned long long parsed = strtoull(text, &endptr, 10);
+        unsigned long long parsed =
+            strtoull(text, &endptr, LOCKDOCK_IPC_DECIMAL_BASE);
 
         if (endptr == text || *endptr != '\0') {
             snprintf(error, error_size, "Field '%s' must be an integer", field_name);
@@ -402,7 +403,7 @@ static bool lockdock_ipc_json_parse_non_negative_int(const json_value_t *value,
                                                      const char *field_name,
                                                      char *error,
                                                      size_t error_size) {
-    char number_text[64];
+    char number_text[LOCKDOCK_IPC_FIELD_TEXT_SIZE];
 
     if (!lockdock_ipc_json_copy_number_text(value, number_text, sizeof(number_text),
                                             field_name, error, error_size)) {
@@ -470,7 +471,7 @@ static bool lockdock_ipc_parse_request_field(const json_object_element_t *elemen
                                              LockDockIpcRequest *request,
                                              char *error,
                                              size_t error_size) {
-    char value_buffer[64];
+    char value_buffer[LOCKDOCK_IPC_FIELD_TEXT_SIZE];
 
     if (element == NULL || request == NULL) {
         lockdock_ipc_set_error(error, error_size, "Internal error");
@@ -631,7 +632,7 @@ static bool lockdock_ipc_parse_display_array(const json_value_t *value,
         count++;
     }
 
-    state->display_count = count;
+    state->display_count = (uint8_t)count;
     return true;
 }
 
@@ -927,7 +928,9 @@ bool lockdock_ipc_ensure_socket_dir(char *error, size_t error_size) {
         return false;
     }
 
-    return lockdock_ipc_mkdir_p(dir_path, 0700, error, error_size);
+    return lockdock_ipc_mkdir_p(
+        dir_path, 0700, error,  // NOLINT cppcoreguidelines-avoid-magic-numbers
+        error_size);
 }
 
 bool lockdock_ipc_copy_socket_path(char *buffer,
@@ -1013,7 +1016,8 @@ bool lockdock_ipc_serialize_request_json(const LockDockIpcRequest *request,
     }
 
     buffer[0] = '\0';
-    if (!lockdock_ipc_append_bytes(buffer, buffer_size, &used, "{\"cmd\":", 7) ||
+    if (!lockdock_ipc_append_bytes(buffer, buffer_size, &used,
+                                   "{\"cmd\":", sizeof("{\"cmd\":") - 1) ||
         !lockdock_ipc_append_json_string(buffer, buffer_size, &used, command_name)) {
         lockdock_ipc_set_error(error, error_size, "Request buffer is too small");
         return false;
@@ -1122,7 +1126,7 @@ bool lockdock_ipc_serialize_state_response_json(const LockDockIpcState *state,
 
     buffer[0] = '\0';
     if (!lockdock_ipc_append_bytes(buffer, buffer_size, &used, "{\"displays\":[",
-                                   13)) {
+                                   sizeof("{\"displays\":[") - 1)) {
         lockdock_ipc_set_error(error, error_size,
                                "State response buffer is too small");
         return false;
@@ -1192,8 +1196,9 @@ bool lockdock_ipc_serialize_result_response_json(const LockDockIpcResult *result
         used = 0;
         buffer[0] = '\0';
 
-        if (!lockdock_ipc_append_bytes(buffer, buffer_size, &used,
-                                       "{\"success\":false,\"reason\":", 26) ||
+        if (!lockdock_ipc_append_bytes(
+                buffer, buffer_size, &used, "{\"success\":false,\"reason\":",
+                sizeof("{\"success\":false,\"reason\":") - 1) ||
             !lockdock_ipc_append_json_string(buffer, buffer_size, &used,
                                              result->reason) ||
             !lockdock_ipc_append_bytes(buffer, buffer_size, &used, "}", 1)) {
