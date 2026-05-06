@@ -72,7 +72,8 @@ static bool parse_display_index(const char *text, int *index_out) {
         return false;
     }
 
-    parsed = strtoll(text, &endptr, 10);
+    parsed =
+        strtoll(text, &endptr, 10);  // NOLINT cppcoreguidelines-avoid-magic-numbers
     if (endptr == text || *endptr != '\0' || parsed < 0 || parsed > INT_MAX) {
         return false;
     }

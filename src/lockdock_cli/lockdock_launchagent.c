@@ -18,6 +18,15 @@
 
 #define LOCKDOCK_LAUNCHAGENT_LABEL LOCKDOCK_IPC_BUNDLE_ID
 
+enum {
+    LOCKDOCK_LAUNCHAGENT_PERMISSION_DIR = 0755,
+    LOCKDOCK_LAUNCHAGENT_PERMISSION_FILE = 0644,
+    LOCKDOCK_LAUNCHAGENT_CONTENT_MAX = 4096,
+    LOCKDOCK_LAUNCHAGENT_DOMAIN_TARGET_MAX = 64,
+    LOCKDOCK_LAUNCHAGENT_SERVICE_TARGET_MAX = 96,
+    LOCKDOCK_MAX_OUTPUT_SIZE = 256,
+};
+
 static void lockdock_set_message(char *buffer,
                                  size_t buffer_size,
                                  const char *message) {
@@ -197,7 +206,8 @@ static bool lockdock_mkdir_p(const char *path, char *error, size_t error_size) {
         }
 
         tmp[i] = '\0';
-        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+        if (mkdir(tmp, LOCKDOCK_LAUNCHAGENT_PERMISSION_DIR) != 0 &&
+            errno != EEXIST) {
             snprintf(error, error_size, "Failed to create directory '%s': %s", tmp,
                      strerror(errno));
             return false;
@@ -205,7 +215,7 @@ static bool lockdock_mkdir_p(const char *path, char *error, size_t error_size) {
         tmp[i] = '/';
     }
 
-    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+    if (mkdir(tmp, LOCKDOCK_LAUNCHAGENT_PERMISSION_DIR) != 0 && errno != EEXIST) {
         snprintf(error, error_size, "Failed to create directory '%s': %s", tmp,
                  strerror(errno));
         return false;
@@ -391,7 +401,7 @@ static bool lockdock_write_plist(const char *plist_path,
         return false;
     }
 
-    if (fchmod(fd, 0644) != 0) {
+    if (fchmod(fd, LOCKDOCK_LAUNCHAGENT_PERMISSION_FILE) != 0) {
         snprintf(error, error_size, "Failed to set LaunchAgent plist mode: %s",
                  strerror(errno));
         goto cleanup;
@@ -444,7 +454,7 @@ static bool lockdock_read_command_output(int fd, char *buffer, size_t buffer_siz
     }
 
     while (1) {
-        char chunk[256];
+        char chunk[LOCKDOCK_MAX_OUTPUT_SIZE];
         ssize_t nread = read(fd, chunk, sizeof(chunk));
 
         if (nread < 0) {
@@ -513,13 +523,13 @@ static bool lockdock_run_command(const char *const *argv,
             dup2(pipefd[1], STDERR_FILENO) < 0) {
             fprintf(stderr, "Failed to redirect subprocess output: %s\n",
                     strerror(errno));
-            _exit(127);
+            _exit(127);  // NOLINT
         }
 
         close(pipefd[1]);
         execvp(argv[0], (char *const *)argv);
         fprintf(stderr, "Failed to exec %s: %s\n", argv[0], strerror(errno));
-        _exit(127);
+        _exit(127);  // NOLINT
     }
 
     close(pipefd[1]);
@@ -549,7 +559,7 @@ static bool lockdock_run_command(const char *const *argv,
     if (WIFEXITED(status)) {
         *exit_status = WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {
-        *exit_status = 128 + WTERMSIG(status);
+        *exit_status = 128 + WTERMSIG(status);  // NOLINT
     } else {
         *exit_status = 1;
     }
@@ -601,9 +611,9 @@ bool lockdock_launchagent_enable(char *message, size_t message_size) {
     char daemon_path[PATH_MAX];
     char directory[PATH_MAX];
     char plist_path[PATH_MAX];
-    char plist_content[4096];
-    char domain_target[64];
-    char service_target[96];
+    char plist_content[LOCKDOCK_LAUNCHAGENT_CONTENT_MAX];
+    char domain_target[LOCKDOCK_LAUNCHAGENT_DOMAIN_TARGET_MAX];
+    char service_target[LOCKDOCK_LAUNCHAGENT_SERVICE_TARGET_MAX];
     char error[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
     const char *enable_argv[] = {"launchctl", "enable", service_target, NULL};
     const char *bootout_argv[] = {"launchctl", "bootout", service_target, NULL};
@@ -646,7 +656,7 @@ bool lockdock_launchagent_enable(char *message, size_t message_size) {
 
 bool lockdock_launchagent_disable(char *message, size_t message_size) {
     char plist_path[PATH_MAX];
-    char service_target[96];
+    char service_target[LOCKDOCK_LAUNCHAGENT_SERVICE_TARGET_MAX];
     char error[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
     const char *disable_argv[] = {"launchctl", "disable", service_target, NULL};
     const char *bootout_argv[] = {"launchctl", "bootout", service_target, NULL};
