@@ -43,7 +43,13 @@ By default, the binaries are installed in `~/.local/bin`. If `lockdock` isn't fo
 The `lockdock enable` command creates `~/Library/LaunchAgents/co.myrt.lockdockd.plist` and starts the daemon in the background.
 If macOS asks for `Accessibility` access, grant it to `lockdockd`.
 
-## CLI
+## Usage
+
+### Raycast
+
+The most convenient way to use `lockdockd` is through the [Raycast extension](https://github.com/mishamyrt/lockdock-raycast). It displays a list of your monitors, the current Dock position, and lets you pin it to whichever display you want.
+
+### CLI
 
 Basic commands:
 
