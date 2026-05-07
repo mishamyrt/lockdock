@@ -2,6 +2,8 @@
 #include "lockdock_ipc.h"
 #include "lockdock_launchagent.h"
 
+#include <hue.h>
+
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -110,18 +112,24 @@ static int handle_unlock(void) {
     return 0;
 }
 
+#define HEADER(text) hue_fg(text, BRIGHT_GREEN, BOLD)
+
+#define COMMAND(text) hue_fg(text, WHITE, BOLD)
+
+#define COMMAND_P(text) "  " COMMAND(text)
+
 static void print_usage(const char *prog) {
-    printf("Usage:\n");
-    printf("  %s run                      Run daemon in foreground\n", prog);
-    printf("  %s enable                   Install and start the LaunchAgent\n",
-           prog);
-    printf("  %s disable                  Stop and remove the LaunchAgent\n", prog);
-    printf("  %s list                     List displays and Dock state\n", prog);
-    printf("  %s lock <index>             Lock the Dock to the display index\n",
-           prog);
-    printf("  %s unlock                   Unlock the Dock\n", prog);
-    printf("  %s help                     Show help\n", prog);
-    printf("  %s version                  Show version\n", prog);
+    printf("Dock position locker\n\n");
+    printf(HEADER("Usage: ") COMMAND("%s") " [COMMAND]\n\n", prog);
+    printf(HEADER("Commands:\n"));
+    printf(COMMAND_P("run") "           Run daemon in foreground\n");
+    printf(COMMAND_P("enable") "        Install and start the LaunchAgent\n");
+    printf(COMMAND_P("disable") "       Stop and remove the LaunchAgent\n");
+    printf(COMMAND_P("list") "          List displays and Dock state\n");
+    printf(COMMAND_P("lock") " <index>  Lock the Dock to the display index\n");
+    printf(COMMAND_P("unlock") "        Unlock the Dock\n");
+    printf(COMMAND_P("version") "       Show version\n");
+    printf(COMMAND_P("help") "          Show this message and exit\n");
 }
 
 int main(int argc, char **argv) {
