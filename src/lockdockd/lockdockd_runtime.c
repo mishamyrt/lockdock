@@ -1,11 +1,13 @@
 #include "lockdockd_runtime.h"
 
+#include "lockdockd_display.h"
 #include "lockdockd_platform.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>

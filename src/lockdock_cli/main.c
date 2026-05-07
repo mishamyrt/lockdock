@@ -3,6 +3,7 @@
 #include <lockdock_ipc.h>
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,9 +12,7 @@
 #define APP_VERSION "dev"
 #endif
 
-enum {
-  LOCKDOCK_CLI_MESSAGE_SIZE = 1024
-};
+enum { LOCKDOCK_CLI_MESSAGE_SIZE = 1024 };
 
 static int cmd_enable(void) {
     char message[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];

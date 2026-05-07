@@ -1,5 +1,7 @@
 #include "lockdockd_preferences.h"
 
+#include "lockdockd_display.h"
+
 #include <lockdock_ipc.h>
 
 #include <CoreFoundation/CoreFoundation.h>

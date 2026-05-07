@@ -1,11 +1,11 @@
 #include "lockdockd_daemon.h"
 
+#include "lockdockd_display.h"
 #include "lockdockd_locker.h"
 #include "lockdockd_platform.h"
 #include "lockdockd_preferences.h"
 #include "lockdockd_runtime.h"
 
-#include <json.h>
 #include <lockdock_ipc.h>
 
 #include <errno.h>

@@ -1,5 +1,7 @@
 #include "lockdockd_platform.h"
 
+#include "lockdockd_display.h"
+
 #include <json.h>
 
 #include <ApplicationServices/ApplicationServices.h>
