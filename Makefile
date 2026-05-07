@@ -26,7 +26,7 @@ CFLAGS = \
 	-std=c11 \
 	-Wall -Wextra \
 	-I$(THIRDPARTY_DIR) \
-	-DAPP_VERSION="\"$(VERSION)\""
+	-DLOCKDOCK_VERSION="\"$(VERSION)\""
 FRAMEWORKS = \
 	-framework CoreGraphics \
 	-framework ApplicationServices \

@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef APP_VERSION
-#define APP_VERSION "dev"
+#ifndef LOCKDOCK_VERSION
+#define LOCKDOCK_VERSION "dev"
 #endif
 
 static int handle_enable(void) {
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
     }
 
     if (strcmp(command, "version") == 0) {
-        printf("lockdock %s\n", APP_VERSION);
+        printf("lockdock %s\n", LOCKDOCK_VERSION);
         return 0;
     }
 
