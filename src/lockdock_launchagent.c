@@ -326,10 +326,16 @@ static bool lockdock_build_plist(char *buffer,
         !lockdock_append_xml_escaped(buffer, buffer_size, &used, executable_path) ||
         !lockdock_append_cstring(buffer, buffer_size, &used,
                                  "</string>\n"
-                                 "         <string>run</string>\n"
+                                 "        <string>run</string>\n"
                                  "    </array>\n"
                                  "    <key>RunAtLoad</key>\n"
                                  "    <true/>\n"
+                                 "    <key>ProcessType</key>\n"
+                                 "    <string>Interactive</string>\n"
+                                 "    <key>StandardOutPath</key>\n"
+                                 "    <string>/dev/null</string>\n"
+                                 "    <key>StandardErrorPath</key>\n"
+                                 "    <string>/dev/null</string>\n"
                                  "    <key>KeepAlive</key>\n"
                                  "    <true/>\n"
                                  "</dict>\n"
