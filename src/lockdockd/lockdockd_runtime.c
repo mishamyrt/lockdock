@@ -248,6 +248,33 @@ static void lockdockd_smooth_move(CGEventSourceRef source,
     }
 }
 
+static CGFloat lockdockd_choose_trigger_coordinate(
+    CGDirectDisplayID target_display_id,
+    LockDockdDockOrientation orientation,
+    LockDockdSafeSegment safe_segment) {
+    CGRect bounds = CGDisplayBounds(target_display_id);
+    CGFloat preferred_coordinate;
+
+    if (orientation == LOCKDOCKD_ORIENT_BOTTOM) {
+        preferred_coordinate = bounds.origin.x + bounds.size.width - 10.0;
+        if (preferred_coordinate < bounds.origin.x) {
+            preferred_coordinate = bounds.origin.x;
+        }
+    } else {
+        preferred_coordinate = bounds.origin.y + bounds.size.height - 10.0;
+        if (preferred_coordinate < bounds.origin.y) {
+            preferred_coordinate = bounds.origin.y;
+        }
+    }
+
+    if (!lockdockd_edge_point_has_contact(target_display_id, orientation,
+                                          preferred_coordinate)) {
+        return preferred_coordinate;
+    }
+
+    return safe_segment.center;
+}
+
 bool lockdockd_relocate_display(CGDirectDisplayID display_id,
                                 char *error,
                                 size_t error_size) {
@@ -287,7 +314,8 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
     switch (orientation) {
         case LOCKDOCKD_ORIENT_BOTTOM: {
             CGFloat edge_y = bounds.origin.y + bounds.size.height;
-            CGFloat trigger_x = safe_segment.center;
+            CGFloat trigger_x = lockdockd_choose_trigger_coordinate(
+                display_id, orientation, safe_segment);
 
             approach = CGPointMake(trigger_x, edge_y - edge_offset);
             edge = CGPointMake(trigger_x, edge_y - 1.0);
@@ -296,7 +324,8 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
 
         case LOCKDOCKD_ORIENT_LEFT: {
             CGFloat edge_x = bounds.origin.x;
-            CGFloat trigger_y = safe_segment.center;
+            CGFloat trigger_y = lockdockd_choose_trigger_coordinate(
+                display_id, orientation, safe_segment);
 
             approach = CGPointMake(edge_x + edge_offset, trigger_y);
             edge = CGPointMake(edge_x + 1.0, trigger_y);
@@ -305,7 +334,8 @@ bool lockdockd_relocate_display(CGDirectDisplayID display_id,
 
         case LOCKDOCKD_ORIENT_RIGHT: {
             CGFloat edge_x = bounds.origin.x + bounds.size.width;
-            CGFloat trigger_y = safe_segment.center;
+            CGFloat trigger_y = lockdockd_choose_trigger_coordinate(
+                display_id, orientation, safe_segment);
 
             approach = CGPointMake(edge_x - edge_offset, trigger_y);
             edge = CGPointMake(edge_x - 1.0, trigger_y);

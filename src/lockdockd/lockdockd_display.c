@@ -340,6 +340,54 @@ int lockdockd_find_display_index(CGDirectDisplayID display_id) {
     return search.index;
 }
 
+bool lockdockd_edge_point_has_contact(CGDirectDisplayID target_id,
+                                      LockDockdDockOrientation edge,
+                                      CGFloat point_along_edge) {
+    CGRect target = CGDisplayBounds(target_id);
+    CGFloat edge_min;
+    CGFloat edge_max;
+    CGFloat edge_cross_pos;
+    LockDockdOverlap overlaps[LOCKDOCKD_MAX_OVERLAPS];
+    LockDockdOverlapCollectionContext overlap_collection = {0};
+
+    if (edge == LOCKDOCKD_ORIENT_BOTTOM) {
+        edge_min = target.origin.x;
+        edge_max = target.origin.x + target.size.width;
+        edge_cross_pos = target.origin.y + target.size.height;
+    } else if (edge == LOCKDOCKD_ORIENT_LEFT) {
+        edge_min = target.origin.y;
+        edge_max = target.origin.y + target.size.height;
+        edge_cross_pos = target.origin.x;
+    } else {
+        edge_min = target.origin.y;
+        edge_max = target.origin.y + target.size.height;
+        edge_cross_pos = target.origin.x + target.size.width;
+    }
+
+    if (point_along_edge < edge_min || point_along_edge > edge_max) {
+        return false;
+    }
+
+    overlap_collection.target_id = target_id;
+    overlap_collection.edge = edge;
+    overlap_collection.edge_min = edge_min;
+    overlap_collection.edge_max = edge_max;
+    overlap_collection.edge_cross_pos = edge_cross_pos;
+    overlap_collection.overlaps = overlaps;
+
+    lockdockd_for_each_active_display(lockdockd_collect_display_overlap,
+                                      &overlap_collection);
+
+    for (int i = 0; i < overlap_collection.overlap_count; i++) {
+        if (point_along_edge >= overlaps[i].start &&
+            point_along_edge <= overlaps[i].end) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 LockDockdSafeSegment lockdockd_find_safe_edge_segment(
     CGDirectDisplayID target_id,
     LockDockdDockOrientation edge) {

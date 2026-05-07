@@ -40,6 +40,9 @@ bool lockdockd_find_active_display_by_identity(
     CGDirectDisplayID *display_id_out);
 LockDockdSafeSegment lockdockd_find_safe_edge_segment(CGDirectDisplayID target_id,
                                                       LockDockdDockOrientation edge);
+bool lockdockd_edge_point_has_contact(CGDirectDisplayID target_id,
+                                      LockDockdDockOrientation edge,
+                                      CGFloat point_along_edge);
 CGDirectDisplayID lockdockd_find_display_at_point(CGPoint point);
 
 #endif

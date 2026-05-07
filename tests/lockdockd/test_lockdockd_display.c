@@ -264,6 +264,29 @@ static void test_find_safe_edge_segment_right_merges_adjacent_overlaps(void) {
     TEST_ASSERT_EQUAL_INT(65, (int)segment.center);
 }
 
+static void test_edge_point_has_contact_detects_bottom_corner_overlap(void) {
+    lockdock_test_add_display(90, CGRectMake(0, 0, 100, 100), false, 0, 0, 0, NULL);
+    lockdock_test_add_display(91, CGRectMake(70, 100, 30, 40), false, 0, 0, 0,
+                              NULL);
+
+    TEST_ASSERT_TRUE(
+        lockdockd_edge_point_has_contact(90, LOCKDOCKD_ORIENT_BOTTOM, 90));
+    TEST_ASSERT_FALSE(
+        lockdockd_edge_point_has_contact(90, LOCKDOCKD_ORIENT_BOTTOM, 10));
+}
+
+static void test_edge_point_has_contact_detects_side_corner_overlap(void) {
+    lockdock_test_add_display(100, CGRectMake(200, 0, 100, 100), false, 0, 0, 0,
+                              NULL);
+    lockdock_test_add_display(101, CGRectMake(150, 80, 50, 20), false, 0, 0, 0,
+                              NULL);
+
+    TEST_ASSERT_TRUE(lockdockd_edge_point_has_contact(100, LOCKDOCKD_ORIENT_LEFT,
+                                                      90));
+    TEST_ASSERT_FALSE(lockdockd_edge_point_has_contact(100, LOCKDOCKD_ORIENT_LEFT,
+                                                       10));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_display_identity_is_valid_accepts_any_stable_identifier);
@@ -274,5 +297,7 @@ int main(void) {
     RUN_TEST(test_find_safe_edge_segment_bottom_skips_overlaps);
     RUN_TEST(test_find_safe_edge_segment_left_uses_largest_gap);
     RUN_TEST(test_find_safe_edge_segment_right_merges_adjacent_overlaps);
+    RUN_TEST(test_edge_point_has_contact_detects_bottom_corner_overlap);
+    RUN_TEST(test_edge_point_has_contact_detects_side_corner_overlap);
     return UNITY_END();
 }
