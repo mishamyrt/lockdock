@@ -8,6 +8,9 @@ on:
 permissions:
     contents: write
 
+env:
+    LLVM_VERSION: 22
+
 jobs:
     build:
         name: Build macOS ${{ matrix.asset_arch }}
@@ -25,6 +28,11 @@ jobs:
         steps:
             - name: Checkout
               uses: actions/checkout@v6.0.2
+
+            - name: Setup LLVM
+              run: |
+                  brew install llvm@${{ env.LLVM_VERSION }}
+                  echo "$(brew --prefix llvm@${{ env.LLVM_VERSION }})/bin/" >> $GITHUB_PATH
 
             - name: Build release asset
               env:
