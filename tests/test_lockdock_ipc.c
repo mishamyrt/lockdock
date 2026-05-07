@@ -1,8 +1,8 @@
 #include <Unity/unity.h>
 
-#include <lockdock_ipc.h>
+#include "../src/lockdock_ipc.h"
 
-#include "../support/test_support.h"
+#include "test_support.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -46,7 +46,7 @@ static int lockdock_test_close(int fd);
 #define read lockdock_test_read
 #define shutdown lockdock_test_shutdown
 #define close lockdock_test_close
-#include "../../src/lockdock_ipc/lockdock_ipc.c"
+#include "../src/lockdock_ipc.c"
 #undef socket
 #undef connect
 #undef write
@@ -365,12 +365,12 @@ static void test_socket_helpers_use_temp_home_directory(void) {
                                                    error, sizeof(error)));
     TEST_ASSERT_TRUE(lockdock_test_join_path(expected_path, sizeof(expected_path),
                                              g_temp_home,
-                                             "Library/Caches/co.myrt.lockdockd/"
+                                             "Library/Caches/co.myrt.lockdock/"
                                              "control.sock"));
     TEST_ASSERT_EQUAL_STRING(expected_path, socket_path);
     TEST_ASSERT_TRUE(lockdock_test_join_path(socket_dir, sizeof(socket_dir),
                                              g_temp_home,
-                                             "Library/Caches/co.myrt.lockdockd"));
+                                             "Library/Caches/co.myrt.lockdock"));
     TEST_ASSERT_EQUAL_INT(0, access(socket_dir, F_OK));
 }
 

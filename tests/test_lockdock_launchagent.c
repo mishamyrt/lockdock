@@ -1,6 +1,6 @@
 #include <Unity/unity.h>
 
-#include "../support/test_support.h"
+#include "test_support.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "../../src/lockdock_cli/lockdock_launchagent.c"
+#include "../src/lockdock_launchagent.c"
 
 static char g_temp_home[PATH_MAX];
 static LockDockTestEnvGuard g_home_guard;
@@ -57,7 +57,7 @@ static void test_copy_plist_path_uses_home_directory(void) {
         lockdock_copy_plist_path(path, sizeof(path), error, sizeof(error)));
     TEST_ASSERT_TRUE(
         lockdock_test_join_path(expected, sizeof(expected), g_temp_home,
-                                "Library/LaunchAgents/co.myrt.lockdockd.plist"));
+                                "Library/LaunchAgents/co.myrt.lockdock.plist"));
     TEST_ASSERT_EQUAL_STRING(expected, path);
 }
 
@@ -66,9 +66,9 @@ static void test_build_plist_escapes_xml_special_characters(void) {
     char error[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
 
     TEST_ASSERT_TRUE(lockdock_build_plist(
-        plist, sizeof(plist), "/tmp/A&B<'\"/lockdockd", error, sizeof(error)));
-    lockdock_test_assert_contains(plist, "<string>co.myrt.lockdockd</string>");
-    lockdock_test_assert_contains(plist, "/tmp/A&amp;B&lt;&apos;&quot;/lockdockd");
+        plist, sizeof(plist), "/tmp/A&B<'\"/lockdock", error, sizeof(error)));
+    lockdock_test_assert_contains(plist, "<string>co.myrt.lockdock</string>");
+    lockdock_test_assert_contains(plist, "/tmp/A&amp;B&lt;&apos;&quot;/lockdock");
     lockdock_test_assert_contains(plist, "<key>RunAtLoad</key>");
 }
 
@@ -143,7 +143,7 @@ static void test_write_plist_writes_complete_file(void) {
     TEST_ASSERT_TRUE(lockdock_test_join_path(directory, sizeof(directory),
                                              g_temp_home, "Library/LaunchAgents"));
     TEST_ASSERT_TRUE(lockdock_test_join_path(path, sizeof(path), directory,
-                                             "co.myrt.lockdockd.plist"));
+                                             "co.myrt.lockdock.plist"));
 
     TEST_ASSERT_TRUE(lockdock_mkdir_p(directory, error, sizeof(error)));
     snprintf(content, sizeof(content), "<plist>test</plist>\n");

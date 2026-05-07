@@ -1,6 +1,6 @@
+#include "lockdock_daemon.h"
+#include "lockdock_ipc.h"
 #include "lockdock_launchagent.h"
-
-#include <lockdock_ipc.h>
 
 #include <limits.h>
 #include <stdint.h>
@@ -12,9 +12,7 @@
 #define APP_VERSION "dev"
 #endif
 
-enum { LOCKDOCK_CLI_MESSAGE_SIZE = 1024 };
-
-static int cmd_enable(void) {
+static int handle_enable(void) {
     char message[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
 
     if (!lockdock_launchagent_enable(message, sizeof(message))) {
@@ -26,7 +24,7 @@ static int cmd_enable(void) {
     return 0;
 }
 
-static int cmd_disable(void) {
+static int handle_disable(void) {
     char message[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
 
     if (!lockdock_launchagent_disable(message, sizeof(message))) {
@@ -38,9 +36,9 @@ static int cmd_disable(void) {
     return 0;
 }
 
-static int cmd_list(void) {
+static int handle_list(void) {
     LockDockIpcState state;
-    char error[LOCKDOCK_CLI_MESSAGE_SIZE];
+    char error[LOCKDOCK_IPC_MAX_ERROR];
 
     if (!lockdock_ipc_get_state(&state, error, sizeof(error))) {
         fprintf(stderr, "%s\n", error);
@@ -73,8 +71,7 @@ static bool parse_display_index(const char *text, int *index_out) {
         return false;
     }
 
-    parsed =
-        strtoll(text, &endptr, 10);  // NOLINT cppcoreguidelines-avoid-magic-numbers
+    parsed = strtoll(text, &endptr, 10);
     if (endptr == text || *endptr != '\0' || parsed < 0 || parsed > INT_MAX) {
         return false;
     }
@@ -83,8 +80,8 @@ static bool parse_display_index(const char *text, int *index_out) {
     return true;
 }
 
-static int cmd_lock(const char *index_text) {
-    char error[LOCKDOCK_CLI_MESSAGE_SIZE];
+static int handle_lock(const char *index_text) {
+    char error[LOCKDOCK_IPC_MAX_ERROR];
     int index = 0;
 
     if (!parse_display_index(index_text, &index)) {
@@ -101,8 +98,8 @@ static int cmd_lock(const char *index_text) {
     return 0;
 }
 
-static int cmd_unlock(void) {
-    char error[LOCKDOCK_CLI_MESSAGE_SIZE];
+static int handle_unlock(void) {
+    char error[LOCKDOCK_IPC_MAX_ERROR];
 
     if (!lockdock_ipc_unlock(error, sizeof(error))) {
         fprintf(stderr, "%s\n", error);
@@ -115,6 +112,7 @@ static int cmd_unlock(void) {
 
 static void print_usage(const char *prog) {
     printf("Usage:\n");
+    printf("  %s run                      Run daemon in foreground\n", prog);
     printf("  %s enable                   Install and start the LaunchAgent\n",
            prog);
     printf("  %s disable                  Stop and remove the LaunchAgent\n", prog);
@@ -122,7 +120,7 @@ static void print_usage(const char *prog) {
     printf("  %s lock <index>             Lock the Dock to the display index\n",
            prog);
     printf("  %s unlock                   Unlock the Dock\n", prog);
-    printf("  %s help | -h | --help       Show help\n", prog);
+    printf("  %s help                     Show help\n", prog);
     printf("  %s version                  Show version\n", prog);
 }
 
@@ -136,10 +134,8 @@ int main(int argc, char **argv) {
 
     command = argv[1];
 
-    if (strcmp(command, "help") == 0 || strcmp(command, "-h") == 0 ||
-        strcmp(command, "--help") == 0) {
-        print_usage(argv[0]);
-        return 0;
+    if (strcmp(command, "run") == 0) {
+        return lockdock_run_daemon();
     }
 
     if (strcmp(command, "enable") == 0) {
@@ -147,7 +143,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Usage: %s enable\n", argv[0]);
             return 1;
         }
-        return cmd_enable();
+        return handle_enable();
     }
 
     if (strcmp(command, "disable") == 0) {
@@ -155,7 +151,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Usage: %s disable\n", argv[0]);
             return 1;
         }
-        return cmd_disable();
+        return handle_disable();
     }
 
     if (strcmp(command, "list") == 0) {
@@ -163,7 +159,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Usage: %s list\n", argv[0]);
             return 1;
         }
-        return cmd_list();
+        return handle_list();
     }
 
     if (strcmp(command, "lock") == 0) {
@@ -171,7 +167,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Usage: %s lock <index>\n", argv[0]);
             return 1;
         }
-        return cmd_lock(argv[2]);
+        return handle_lock(argv[2]);
     }
 
     if (strcmp(command, "unlock") == 0) {
@@ -179,7 +175,12 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Usage: %s unlock\n", argv[0]);
             return 1;
         }
-        return cmd_unlock();
+        return handle_unlock();
+    }
+
+    if (strcmp(command, "help") == 0) {
+        print_usage(argv[0]);
+        return 0;
     }
 
     if (strcmp(command, "version") == 0) {

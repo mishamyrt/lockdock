@@ -2,46 +2,31 @@ VERSION = 0.1.1
 
 SRC_DIR = src
 BUILD_DIR = build
+ARTIFACTS_DIR = $(BUILD_DIR)/artifacts
 INSTALL_DIR = ${HOME}/.local/bin
 THIRDPARTY_DIR = thirdparty
+TARGET = $(BUILD_DIR)/lockdock
 
-DAEMON_SRC_DIR = $(SRC_DIR)/lockdockd
-DAEMON_BUILD_DIR = $(BUILD_DIR)/artifacts/lockdockd
-DAEMON_TARGET = $(BUILD_DIR)/lockdockd
-DAEMON_SRCS = \
-	$(DAEMON_SRC_DIR)/main.c \
-	$(DAEMON_SRC_DIR)/lockdockd_daemon.c \
-	$(DAEMON_SRC_DIR)/lockdockd_display.c \
-	$(DAEMON_SRC_DIR)/lockdockd_locker.c \
-	$(DAEMON_SRC_DIR)/lockdockd_platform.c \
-	$(DAEMON_SRC_DIR)/lockdockd_preferences.c \
-	$(DAEMON_SRC_DIR)/lockdockd_runtime.c
-DAEMON_OBJS = $(patsubst $(DAEMON_SRC_DIR)/%.c,$(DAEMON_BUILD_DIR)/%.o,$(DAEMON_SRCS))
+SRCS = \
+	$(SRC_DIR)/main.c \
+	$(SRC_DIR)/lockdock_daemon.c \
+	$(SRC_DIR)/lockdock_display.c \
+	$(SRC_DIR)/lockdock_locker.c \
+	$(SRC_DIR)/lockdock_platform.c \
+	$(SRC_DIR)/lockdock_preferences.c \
+	$(SRC_DIR)/lockdock_runtime.c \
+	$(SRC_DIR)/lockdock_launchagent.c \
+	$(SRC_DIR)/lockdock_ipc.c
+OBJS = $(patsubst $(SRC_DIR)/%.c,$(ARTIFACTS_DIR)/%.o,$(SRCS))
 
-CLI_SRC_DIR = $(SRC_DIR)/lockdock_cli
-CLI_BUILD_DIR = $(BUILD_DIR)/artifacts/lockdock
-CLI_TARGET = $(BUILD_DIR)/lockdock
-CLI_SRCS = \
-	$(CLI_SRC_DIR)/main.c \
-	$(CLI_SRC_DIR)/lockdock_launchagent.c
-CLI_OBJS = $(patsubst $(CLI_SRC_DIR)/%.c,$(CLI_BUILD_DIR)/%.o,$(CLI_SRCS))
-
-IPC_SRC_DIR = $(SRC_DIR)/lockdock_ipc
-IPC_BUILD_DIR = $(BUILD_DIR)/artifacts/lockdock_ipc
-IPC_SRCS = \
-	$(IPC_SRC_DIR)/lockdock_ipc.c
-IPC_OBJS = $(patsubst $(IPC_SRC_DIR)/%.c,$(IPC_BUILD_DIR)/%.o,$(IPC_SRCS))
-
+CC = clang
+CLANG_TIDY ?= clang-tidy
 OPTFLAGS ?= -O3 -flto
 CFLAGS = \
 	-std=c11 \
 	-Wall -Wextra \
-	-I$(IPC_SRC_DIR) \
 	-I$(THIRDPARTY_DIR) \
 	-DAPP_VERSION="\"$(VERSION)\""
-CLANG_TIDY ?= clang-tidy
-TIDY_SRCS = $(IPC_SRCS) $(DAEMON_SRCS) $(CLI_SRCS)
-
 FRAMEWORKS = \
 	-framework CoreGraphics \
 	-framework ApplicationServices \
@@ -50,26 +35,16 @@ FRAMEWORKS = \
 
 .PHONY: all clean fmt install publish tidy
 
-all: $(DAEMON_TARGET) $(CLI_TARGET)
+all: $(TARGET)
 
-$(IPC_BUILD_DIR)/%.o: $(IPC_SRC_DIR)/%.c | $(IPC_BUILD_DIR)
-	clang $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
-$(IPC_BUILD_DIR):
-	mkdir -p $(IPC_BUILD_DIR)
+$(ARTIFACTS_DIR):
+	mkdir -p $(ARTIFACTS_DIR)
 
-$(DAEMON_TARGET): $(IPC_OBJS) $(DAEMON_OBJS)
-	clang $(CFLAGS) $(OPTFLAGS) -o $@ $(IPC_OBJS) $(DAEMON_OBJS) $(FRAMEWORKS)
-$(DAEMON_BUILD_DIR)/%.o: $(DAEMON_SRC_DIR)/%.c | $(DAEMON_BUILD_DIR)
-	clang $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
-$(DAEMON_BUILD_DIR):
-	mkdir -p $(DAEMON_BUILD_DIR)
+$(ARTIFACTS_DIR)/%.o: $(SRC_DIR)/%.c | $(ARTIFACTS_DIR)
+	$(CC) $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
 
-$(CLI_TARGET): $(IPC_OBJS) $(CLI_OBJS)
-	clang $(CFLAGS) $(OPTFLAGS) -o $@ $(IPC_OBJS) $(CLI_OBJS) $(FRAMEWORKS)
-$(CLI_BUILD_DIR)/%.o: $(CLI_SRC_DIR)/%.c | $(CLI_BUILD_DIR)
-	clang $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
-$(CLI_BUILD_DIR):
-	mkdir -p $(CLI_BUILD_DIR)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) $(OPTFLAGS) -o $@ $(OBJS) $(FRAMEWORKS)
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -81,9 +56,9 @@ fmt:
 		| xargs clang-format -i
 
 tidy:
-	$(CLANG_TIDY) -quiet $(TIDY_SRCS) -- $(CFLAGS)
+	$(CLANG_TIDY) -quiet $(SRCS) -- $(CFLAGS)
 
-install: $(CLI_TARGET) $(DAEMON_TARGET)
+install:
 	mkdir -p $(INSTALL_DIR)
 	cp $^ $(INSTALL_DIR)
 

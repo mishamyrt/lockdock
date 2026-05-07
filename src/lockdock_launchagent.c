@@ -1,6 +1,6 @@
 #include "lockdock_launchagent.h"
 
-#include <lockdock_ipc.h>
+#include "lockdock_ipc.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -247,25 +247,17 @@ static bool lockdock_copy_executable_path(char *buffer,
     return true;
 }
 
-static bool lockdock_copy_daemon_path(char *buffer,
-                                      size_t buffer_size,
-                                      char *error,
-                                      size_t error_size) {
-    char executable_path[PATH_MAX];
-
-    if (!lockdock_copy_executable_path(executable_path, sizeof(executable_path),
-                                       error, error_size)) {
-        return false;
-    }
-
-    if (snprintf(buffer, buffer_size, "%sd", executable_path) >= (int)buffer_size) {
-        lockdock_set_message(error, error_size, "Daemon path is too long");
+static bool lockdock_copy_program_path(char *buffer,
+                                       size_t buffer_size,
+                                       char *error,
+                                       size_t error_size) {
+    if (!lockdock_copy_executable_path(buffer, buffer_size, error, error_size)) {
         return false;
     }
 
     if (access(buffer, X_OK) != 0) {
         snprintf(error, error_size,
-                 "Expected daemon binary at %s, but it is missing or not executable",
+                 "Expected executable at %s, but it is missing or not executable",
                  buffer);
         return false;
     }
@@ -334,6 +326,7 @@ static bool lockdock_build_plist(char *buffer,
         !lockdock_append_xml_escaped(buffer, buffer_size, &used, executable_path) ||
         !lockdock_append_cstring(buffer, buffer_size, &used,
                                  "</string>\n"
+                                 "         <string>run</string>\n"
                                  "    </array>\n"
                                  "    <key>RunAtLoad</key>\n"
                                  "    <true/>\n"
@@ -523,13 +516,13 @@ static bool lockdock_run_command(const char *const *argv,
             dup2(pipefd[1], STDERR_FILENO) < 0) {
             fprintf(stderr, "Failed to redirect subprocess output: %s\n",
                     strerror(errno));
-            _exit(127);  // NOLINT
+            _exit(127);
         }
 
         close(pipefd[1]);
         execvp(argv[0], (char *const *)argv);
         fprintf(stderr, "Failed to exec %s: %s\n", argv[0], strerror(errno));
-        _exit(127);  // NOLINT
+        _exit(127);
     }
 
     close(pipefd[1]);
@@ -559,7 +552,7 @@ static bool lockdock_run_command(const char *const *argv,
     if (WIFEXITED(status)) {
         *exit_status = WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {
-        *exit_status = 128 + WTERMSIG(status);  // NOLINT
+        *exit_status = 128 + WTERMSIG(status);
     } else {
         *exit_status = 1;
     }
@@ -608,7 +601,7 @@ static bool lockdock_launchctl_best_effort(const char *const *argv,
 }
 
 bool lockdock_launchagent_enable(char *message, size_t message_size) {
-    char daemon_path[PATH_MAX];
+    char program_path[PATH_MAX];
     char directory[PATH_MAX];
     char plist_path[PATH_MAX];
     char plist_content[LOCKDOCK_LAUNCHAGENT_CONTENT_MAX];
@@ -620,8 +613,8 @@ bool lockdock_launchagent_enable(char *message, size_t message_size) {
     const char *bootstrap_argv[] = {"launchctl", "bootstrap", domain_target,
                                     plist_path, NULL};
 
-    if (!lockdock_copy_daemon_path(daemon_path, sizeof(daemon_path), error,
-                                   sizeof(error)) ||
+    if (!lockdock_copy_program_path(program_path, sizeof(program_path), error,
+                                    sizeof(error)) ||
         !lockdock_copy_launchagents_dir(directory, sizeof(directory), error,
                                         sizeof(error)) ||
         !lockdock_copy_plist_path(plist_path, sizeof(plist_path), error,
@@ -635,7 +628,7 @@ bool lockdock_launchagent_enable(char *message, size_t message_size) {
     }
 
     if (!lockdock_mkdir_p(directory, error, sizeof(error)) ||
-        !lockdock_build_plist(plist_content, sizeof(plist_content), daemon_path,
+        !lockdock_build_plist(plist_content, sizeof(plist_content), program_path,
                               error, sizeof(error)) ||
         !lockdock_write_plist(plist_path, plist_content, error, sizeof(error))) {
         lockdock_set_message(message, message_size, error);

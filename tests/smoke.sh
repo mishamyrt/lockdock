@@ -56,11 +56,5 @@ assert_contains "$TMPDIR/cli_unknown.stderr" "Unknown command: nope"
 run_expect 1 cli_lock_missing_target ./build/lockdock lock
 assert_contains "$TMPDIR/cli_lock_missing_target.stderr" "Usage:"
 
-run_expect 0 daemon_version ./build/lockdockd version
-assert_contains "$TMPDIR/daemon_version.stdout" "lockdockd $VERSION"
-
-run_expect 0 daemon_help ./build/lockdockd help
-assert_contains "$TMPDIR/daemon_help.stdout" "Usage:"
-
-run_expect 1 daemon_unknown ./build/lockdockd nope
+run_expect 1 daemon_unknown ./build/lockdock nope
 assert_contains "$TMPDIR/daemon_unknown.stderr" "Unknown command: nope"

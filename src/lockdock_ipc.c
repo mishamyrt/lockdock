@@ -16,7 +16,10 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-enum { LOCKDOCK_IPC_DECIMAL_BASE = 10, LOCKDOCK_IPC_FIELD_TEXT_SIZE = 64 };
+enum {
+    LOCKDOCK_IPC_DECIMAL_BASE = 10,
+    LOCKDOCK_IPC_FIELD_TEXT_SIZE = 64,
+};
 
 static void lockdock_ipc_set_error(char *buffer,
                                    size_t buffer_size,
@@ -929,9 +932,7 @@ bool lockdock_ipc_ensure_socket_dir(char *error, size_t error_size) {
         return false;
     }
 
-    return lockdock_ipc_mkdir_p(
-        dir_path, 0700, error,  // NOLINT cppcoreguidelines-avoid-magic-numbers
-        error_size);
+    return lockdock_ipc_mkdir_p(dir_path, 0700, error, error_size);
 }
 
 bool lockdock_ipc_copy_socket_path(char *buffer,

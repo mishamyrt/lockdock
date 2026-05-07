@@ -46,12 +46,11 @@ jobs:
                   make
 
                   test -x build/lockdock
-                  test -x build/lockdockd
 
                   mkdir -p dist
 
                   archive="lockdock_${TAG}_darwin_${ASSET_ARCH}.tar.gz"
-                  tar -C build -czf "dist/${archive}" lockdock lockdockd
+                  tar -C build -czf "dist/${archive}" lockdock
 
             - name: Upload release asset
               uses: actions/upload-artifact@v4
@@ -186,7 +185,6 @@ jobs:
 
                     def install
                       bin.install "lockdock"
-                      bin.install "lockdockd"
                     end
 
                     test do

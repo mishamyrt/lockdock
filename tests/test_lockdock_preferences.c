@@ -1,7 +1,7 @@
 #include <Unity/unity.h>
 
-#include "../../src/lockdockd/lockdockd_preferences.h"
-#include "../support/test_support.h"
+#include "../src/lockdock_preferences.h"
+#include "test_support.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -15,8 +15,8 @@ static LockDockTestEnvGuard g_home_guard;
 static LockDockTestEnvGuard g_domain_guard;
 
 static void lockdock_test_assert_identity_equal(
-    const LockDockdDisplayIdentity *expected,
-    const LockDockdDisplayIdentity *actual) {
+    const LockDockDisplayIdentity *expected,
+    const LockDockDisplayIdentity *actual) {
     TEST_ASSERT_EQUAL_INT(expected->is_builtin, actual->is_builtin);
     TEST_ASSERT_EQUAL_UINT32(expected->vendor_number, actual->vendor_number);
     TEST_ASSERT_EQUAL_UINT32(expected->model_number, actual->model_number);
@@ -36,11 +36,11 @@ void setUp(void) {
     TEST_ASSERT_TRUE(lockdock_test_push_env(&g_home_guard, "HOME", g_temp_home));
 
     snprintf(g_preferences_domain, sizeof(g_preferences_domain),
-             "co.myrt.lockdockd.tests.%u", (unsigned)getpid());
+             "co.myrt.lockdock.tests.%u", (unsigned)getpid());
     TEST_ASSERT_TRUE(lockdock_test_push_env(
         &g_domain_guard, "LOCKDOCK_TEST_PREFERENCES_DOMAIN", g_preferences_domain));
 
-    if (!lockdockd_preferences_clear_preferred_display(error, sizeof(error))) {
+    if (!lockdock_preferences_clear_preferred_display(error, sizeof(error))) {
         fprintf(stderr, "setUp clear failed: %s\n", error);
         TEST_FAIL_MESSAGE(error);
     }
@@ -49,7 +49,7 @@ void setUp(void) {
 void tearDown(void) {
     char error[512];
 
-    if (!lockdockd_preferences_clear_preferred_display(error, sizeof(error))) {
+    if (!lockdock_preferences_clear_preferred_display(error, sizeof(error))) {
         fprintf(stderr, "tearDown clear failed: %s\n", error);
         TEST_FAIL_MESSAGE(error);
     }
@@ -62,8 +62,8 @@ void tearDown(void) {
 }
 
 static void test_preferences_save_load_and_clear_uuid_backed_display(void) {
-    LockDockdDisplayIdentity expected = {0};
-    LockDockdDisplayIdentity actual = {0};
+    LockDockDisplayIdentity expected = {0};
+    LockDockDisplayIdentity actual = {0};
     char error[512];
 
     expected.vendor_number = 1;
@@ -72,54 +72,54 @@ static void test_preferences_save_load_and_clear_uuid_backed_display(void) {
     snprintf(expected.uuid, sizeof(expected.uuid),
              "11111111-1111-1111-1111-111111111111");
 
-    TEST_ASSERT_TRUE(lockdockd_preferences_save_preferred_display(&expected, error,
-                                                                  sizeof(error)));
-    TEST_ASSERT_TRUE(lockdockd_preferences_load_preferred_display(&actual));
+    TEST_ASSERT_TRUE(lockdock_preferences_save_preferred_display(&expected, error,
+                                                                 sizeof(error)));
+    TEST_ASSERT_TRUE(lockdock_preferences_load_preferred_display(&actual));
     lockdock_test_assert_identity_equal(&expected, &actual);
 
     TEST_ASSERT_TRUE(
-        lockdockd_preferences_clear_preferred_display(error, sizeof(error)));
-    TEST_ASSERT_FALSE(lockdockd_preferences_load_preferred_display(&actual));
+        lockdock_preferences_clear_preferred_display(error, sizeof(error)));
+    TEST_ASSERT_FALSE(lockdock_preferences_load_preferred_display(&actual));
 }
 
 static void test_preferences_round_trip_builtin_only_identity(void) {
-    LockDockdDisplayIdentity expected = {0};
-    LockDockdDisplayIdentity actual = {0};
+    LockDockDisplayIdentity expected = {0};
+    LockDockDisplayIdentity actual = {0};
     char error[512];
 
     expected.is_builtin = true;
 
-    TEST_ASSERT_TRUE(lockdockd_preferences_save_preferred_display(&expected, error,
-                                                                  sizeof(error)));
-    TEST_ASSERT_TRUE(lockdockd_preferences_load_preferred_display(&actual));
+    TEST_ASSERT_TRUE(lockdock_preferences_save_preferred_display(&expected, error,
+                                                                 sizeof(error)));
+    TEST_ASSERT_TRUE(lockdock_preferences_load_preferred_display(&actual));
     lockdock_test_assert_identity_equal(&expected, &actual);
 }
 
 static void test_preferences_reject_invalid_identity(void) {
-    LockDockdDisplayIdentity invalid_identity = {0};
+    LockDockDisplayIdentity invalid_identity = {0};
     char error[512];
 
-    TEST_ASSERT_FALSE(lockdockd_preferences_save_preferred_display(
+    TEST_ASSERT_FALSE(lockdock_preferences_save_preferred_display(
         &invalid_identity, error, sizeof(error)));
     TEST_ASSERT_EQUAL_STRING("Internal error", error);
 }
 
 static void test_preferences_clear_leaves_empty_state(void) {
-    LockDockdDisplayIdentity identity = {0};
-    LockDockdDisplayIdentity actual = {0};
+    LockDockDisplayIdentity identity = {0};
+    LockDockDisplayIdentity actual = {0};
     char error[512];
 
     identity.vendor_number = 10;
     identity.model_number = 20;
 
-    TEST_ASSERT_TRUE(lockdockd_preferences_save_preferred_display(&identity, error,
-                                                                  sizeof(error)));
-    TEST_ASSERT_TRUE(lockdockd_preferences_load_preferred_display(&actual));
+    TEST_ASSERT_TRUE(lockdock_preferences_save_preferred_display(&identity, error,
+                                                                 sizeof(error)));
+    TEST_ASSERT_TRUE(lockdock_preferences_load_preferred_display(&actual));
 
     TEST_ASSERT_TRUE(
-        lockdockd_preferences_clear_preferred_display(error, sizeof(error)));
+        lockdock_preferences_clear_preferred_display(error, sizeof(error)));
     memset(&actual, 0, sizeof(actual));
-    TEST_ASSERT_FALSE(lockdockd_preferences_load_preferred_display(&actual));
+    TEST_ASSERT_FALSE(lockdock_preferences_load_preferred_display(&actual));
 }
 
 int main(void) {

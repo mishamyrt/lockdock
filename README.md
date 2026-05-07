@@ -1,10 +1,10 @@
 # lockdock [![Quality Assurance](https://github.com/mishamyrt/lockdock/actions/workflows/qa.yml/badge.svg)](https://github.com/mishamyrt/lockdock/actions/workflows/qa.yml) [![Version](https://img.shields.io/github/v/tag/mishamyrt/lockdock?label=version)](https://github.com/mishamyrt/lockdock/releases/latest)
 
-`lockdock` pins the Dock in macOS to a selected display. The project consists of a background daemon, `lockdockd`, and a CLI, `lockdock`, which installs the daemon as a `LaunchAgent` and sends commands to it.
+`lockdock` pins the Dock in macOS to a selected display.
 
 ## What this solves
 
-If you have multiple monitors, macOS can move the Dock between them uncontrollably. `lockdockd` lets you lock the Dock to a specific display and return it there after reconnecting a monitor.
+If you have multiple monitors, macOS can move the Dock between them uncontrollably. `lockdock` lets you lock the Dock to a specific display and return it there after reconnecting a monitor.
 
 ## Features
 
@@ -17,7 +17,7 @@ If you have multiple monitors, macOS can move the Dock between them uncontrollab
 ## Requirements
 
 - macOS;
-- `Accessibility` access for `lockdockd`, otherwise the daemon won't be able to detect and move the Dock.
+- `Accessibility` access for `lockdock`, otherwise the daemon won't be able to detect and move the Dock.
 
 ## Installation
 
@@ -40,14 +40,14 @@ lockdock enable # enable background daemon
 
 By default, the binaries are installed in `~/.local/bin`. If `lockdock` isn't found, add this directory to your `PATH`.
 
-The `lockdock enable` command creates `~/Library/LaunchAgents/co.myrt.lockdockd.plist` and starts the daemon in the background.
-If macOS asks for `Accessibility` access, grant it to `lockdockd`.
+The `lockdock enable` command creates `~/Library/LaunchAgents/co.myrt.lockdock.plist` and starts the daemon in the background.
+If macOS asks for `Accessibility` access, grant it to `lockdock`.
 
 ## Usage
 
 ### Raycast
 
-The most convenient way to use `lockdockd` is through the [Raycast extension](https://github.com/mishamyrt/lockdock-raycast). It displays a list of your monitors, the current Dock position, and lets you pin it to whichever display you want.
+The most convenient way to use `lockdock` is through the [Raycast extension](https://github.com/mishamyrt/lockdock-raycast). It displays a list of your monitors, the current Dock position, and lets you pin it to whichever display you want.
 
 ### CLI
 

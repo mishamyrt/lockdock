@@ -1,6 +1,6 @@
-#include "lockdockd_platform.h"
+#include "lockdock_platform.h"
 
-#include "lockdockd_display.h"
+#include "lockdock_display.h"
 
 #include <json.h>
 
@@ -20,46 +20,45 @@
 #include <time.h>
 #include <unistd.h>
 
-#define LOCKDOCKD_MAX_DISPLAYS 32
+#define lockdock_MAX_DISPLAYS 32
 
-#define LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
-#define LOCKDOCKD_DISPLAY_ID_MAX 64
-#define LOCKDOCKD_DISPLAY_NAME_MAX 256
-#define LOCKDOCKD_STREAM_BUF_INITIAL_CAP 4096
+#define lockdock_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
+#define lockdock_DISPLAY_ID_MAX 64
+#define lockdock_DISPLAY_NAME_MAX 256
+#define lockdock_STREAM_BUF_INITIAL_CAP 4096
 
 typedef struct {
     CGDirectDisplayID display_id;
-    char name[LOCKDOCKD_DISPLAY_NAME_MAX];
-} LockDockdDisplayNameEntry;
+    char name[lockdock_DISPLAY_NAME_MAX];
+} LockDockDisplayNameEntry;
 
 typedef struct {
     bool has_display_id;
     bool has_name;
     bool prefers_display_id;
     CGDirectDisplayID display_id;
-    char name[LOCKDOCKD_DISPLAY_NAME_MAX];
-} LockDockdDisplayObjectState;
+    char name[lockdock_DISPLAY_NAME_MAX];
+} LockDockDisplayObjectState;
 
-static LockDockdDisplayNameEntry
-    lockdockd_display_name_cache[LOCKDOCKD_MAX_DISPLAYS];
-static size_t lockdockd_display_name_cache_count = 0;
-static time_t lockdockd_display_name_cache_last_refresh_attempt_at = 0;
-static bool lockdockd_display_name_cache_needs_refresh = true;
+static LockDockDisplayNameEntry lockdock_display_name_cache[lockdock_MAX_DISPLAYS];
+static size_t lockdock_display_name_cache_count = 0;
+static time_t lockdock_display_name_cache_last_refresh_attempt_at = 0;
+static bool lockdock_display_name_cache_needs_refresh = true;
 static _Atomic uint32_t g_dock_orientation_cache = 0;
 
-static void lockdockd_clear_display_name_cache_entries(void) {
-    memset(lockdockd_display_name_cache, 0, sizeof(lockdockd_display_name_cache));
-    lockdockd_display_name_cache_count = 0;
+static void lockdock_clear_display_name_cache_entries(void) {
+    memset(lockdock_display_name_cache, 0, sizeof(lockdock_display_name_cache));
+    lockdock_display_name_cache_count = 0;
 }
 
-void lockdockd_invalidate_display_name_cache(void) {
-    lockdockd_clear_display_name_cache_entries();
-    lockdockd_display_name_cache_last_refresh_attempt_at = 0;
-    lockdockd_display_name_cache_needs_refresh = true;
+void lockdock_invalidate_display_name_cache(void) {
+    lockdock_clear_display_name_cache_entries();
+    lockdock_display_name_cache_last_refresh_attempt_at = 0;
+    lockdock_display_name_cache_needs_refresh = true;
 }
 
-static bool lockdockd_parse_display_id(const char *value,
-                                       CGDirectDisplayID *display_id_out) {
+static bool lockdock_parse_display_id(const char *value,
+                                      CGDirectDisplayID *display_id_out) {
     char *endptr = NULL;
     unsigned long parsed;
 
@@ -67,7 +66,7 @@ static bool lockdockd_parse_display_id(const char *value,
         return false;
     }
 
-    parsed = strtoul(value, &endptr, 10);  // NOLINT
+    parsed = strtoul(value, &endptr, 10);
     if (endptr == value || *endptr != '\0' || parsed == 0 || parsed > UINT32_MAX) {
         return false;
     }
@@ -76,10 +75,10 @@ static bool lockdockd_parse_display_id(const char *value,
     return true;
 }
 
-static void lockdockd_cache_display_name(LockDockdDisplayNameEntry *entries,
-                                         size_t *entry_count,
-                                         CGDirectDisplayID display_id,
-                                         const char *name) {
+static void lockdock_cache_display_name(LockDockDisplayNameEntry *entries,
+                                        size_t *entry_count,
+                                        CGDirectDisplayID display_id,
+                                        const char *name) {
     if (entries == NULL || entry_count == NULL || name == NULL || name[0] == '\0' ||
         display_id == 0) {
         return;
@@ -92,7 +91,7 @@ static void lockdockd_cache_display_name(LockDockdDisplayNameEntry *entries,
         }
     }
 
-    if (*entry_count >= LOCKDOCKD_MAX_DISPLAYS) {
+    if (*entry_count >= lockdock_MAX_DISPLAYS) {
         return;
     }
 
@@ -102,7 +101,7 @@ static void lockdockd_cache_display_name(LockDockdDisplayNameEntry *entries,
     (*entry_count)++;
 }
 
-static bool lockdockd_json_name_equals(const json_string_t *name, const char *text) {
+static bool lockdock_json_name_equals(const json_string_t *name, const char *text) {
     size_t text_length;
 
     if (name == NULL || name->string == NULL || text == NULL) {
@@ -114,9 +113,9 @@ static bool lockdockd_json_name_equals(const json_string_t *name, const char *te
            memcmp(name->string, text, text_length) == 0;
 }
 
-static bool lockdockd_json_copy_string(const json_value_t *value,
-                                       char *buffer,
-                                       size_t buffer_size) {
+static bool lockdock_json_copy_string(const json_value_t *value,
+                                      char *buffer,
+                                      size_t buffer_size) {
     json_string_t *string_value;
 
     if (value == NULL || buffer == NULL || buffer_size == 0 ||
@@ -135,9 +134,9 @@ static bool lockdockd_json_copy_string(const json_value_t *value,
     return true;
 }
 
-static bool lockdockd_json_copy_number_text(const json_value_t *value,
-                                            char *buffer,
-                                            size_t buffer_size) {
+static bool lockdock_json_copy_number_text(const json_value_t *value,
+                                           char *buffer,
+                                           size_t buffer_size) {
     json_number_t *number_value;
 
     if (value == NULL || buffer == NULL || buffer_size == 0 ||
@@ -156,38 +155,37 @@ static bool lockdockd_json_copy_number_text(const json_value_t *value,
     return true;
 }
 
-static bool lockdockd_parse_display_id_json_value(
-    const json_value_t *value,
-    CGDirectDisplayID *display_id_out) {
-    char text[LOCKDOCKD_DISPLAY_ID_MAX];
+static bool lockdock_parse_display_id_json_value(const json_value_t *value,
+                                                 CGDirectDisplayID *display_id_out) {
+    char text[lockdock_DISPLAY_ID_MAX];
 
     if (value == NULL || display_id_out == NULL) {
         return false;
     }
 
     if (value->type == json_type_string) {
-        return lockdockd_json_copy_string(value, text, sizeof(text)) &&
-               lockdockd_parse_display_id(text, display_id_out);
+        return lockdock_json_copy_string(value, text, sizeof(text)) &&
+               lockdock_parse_display_id(text, display_id_out);
     }
 
     if (value->type == json_type_number) {
-        return lockdockd_json_copy_number_text(value, text, sizeof(text)) &&
-               lockdockd_parse_display_id(text, display_id_out);
+        return lockdock_json_copy_number_text(value, text, sizeof(text)) &&
+               lockdock_parse_display_id(text, display_id_out);
     }
 
     return false;
 }
 
-static void lockdockd_collect_display_names_from_value(
+static void lockdock_collect_display_names_from_value(
     const json_value_t *value,
-    LockDockdDisplayNameEntry *entries,
+    LockDockDisplayNameEntry *entries,
     size_t *entry_count);
 
-static void lockdockd_collect_display_names_from_object(
+static void lockdock_collect_display_names_from_object(
     const json_object_t *object,
-    LockDockdDisplayNameEntry *entries,
+    LockDockDisplayNameEntry *entries,
     size_t *entry_count) {
-    LockDockdDisplayObjectState object_state;
+    LockDockDisplayObjectState object_state;
     json_object_element_t *element;
 
     if (object == NULL || entries == NULL || entry_count == NULL) {
@@ -197,42 +195,42 @@ static void lockdockd_collect_display_names_from_object(
     memset(&object_state, 0, sizeof(object_state));
 
     for (element = object->start; element != NULL; element = element->next) {
-        if (lockdockd_json_name_equals(element->name, "_name")) {
-            if (lockdockd_json_copy_string(element->value, object_state.name,
-                                           sizeof(object_state.name))) {
+        if (lockdock_json_name_equals(element->name, "_name")) {
+            if (lockdock_json_copy_string(element->value, object_state.name,
+                                          sizeof(object_state.name))) {
                 object_state.has_name = object_state.name[0] != '\0';
             }
             continue;
         }
 
-        if (lockdockd_json_name_equals(element->name, "_spdisplays_displayID")) {
-            object_state.has_display_id = lockdockd_parse_display_id_json_value(
+        if (lockdock_json_name_equals(element->name, "_spdisplays_displayID")) {
+            object_state.has_display_id = lockdock_parse_display_id_json_value(
                 element->value, &object_state.display_id);
             object_state.prefers_display_id = object_state.has_display_id;
             continue;
         }
 
         if (!object_state.prefers_display_id &&
-            lockdockd_json_name_equals(element->name, "_spdisplays_CGSDID")) {
-            object_state.has_display_id = lockdockd_parse_display_id_json_value(
+            lockdock_json_name_equals(element->name, "_spdisplays_CGSDID")) {
+            object_state.has_display_id = lockdock_parse_display_id_json_value(
                 element->value, &object_state.display_id);
         }
     }
 
     if (object_state.has_display_id && object_state.has_name) {
-        lockdockd_cache_display_name(entries, entry_count, object_state.display_id,
-                                     object_state.name);
+        lockdock_cache_display_name(entries, entry_count, object_state.display_id,
+                                    object_state.name);
     }
 
     for (element = object->start; element != NULL; element = element->next) {
-        lockdockd_collect_display_names_from_value(element->value, entries,
-                                                   entry_count);
+        lockdock_collect_display_names_from_value(element->value, entries,
+                                                  entry_count);
     }
 }
 
-static void lockdockd_collect_display_names_from_array(
+static void lockdock_collect_display_names_from_array(
     const json_array_t *array,
-    LockDockdDisplayNameEntry *entries,
+    LockDockDisplayNameEntry *entries,
     size_t *entry_count) {
     json_array_element_t *element;
 
@@ -241,36 +239,36 @@ static void lockdockd_collect_display_names_from_array(
     }
 
     for (element = array->start; element != NULL; element = element->next) {
-        lockdockd_collect_display_names_from_value(element->value, entries,
-                                                   entry_count);
+        lockdock_collect_display_names_from_value(element->value, entries,
+                                                  entry_count);
     }
 }
 
-static void lockdockd_collect_display_names_from_value(
+static void lockdock_collect_display_names_from_value(
     const json_value_t *value,
-    LockDockdDisplayNameEntry *entries,
+    LockDockDisplayNameEntry *entries,
     size_t *entry_count) {
     if (value == NULL || entries == NULL || entry_count == NULL) {
         return;
     }
 
     if (value->type == json_type_object) {
-        lockdockd_collect_display_names_from_object(
+        lockdock_collect_display_names_from_object(
             json_value_as_object((json_value_t *)value), entries, entry_count);
         return;
     }
 
     if (value->type == json_type_array) {
-        lockdockd_collect_display_names_from_array(
+        lockdock_collect_display_names_from_array(
             json_value_as_array((json_value_t *)value), entries, entry_count);
     }
 }
 
-static bool lockdockd_read_stream_to_buffer(FILE *stream,
-                                            char **buffer_out,
-                                            size_t *size_out) {
+static bool lockdock_read_stream_to_buffer(FILE *stream,
+                                           char **buffer_out,
+                                           size_t *size_out) {
     char *buffer = NULL;
-    size_t capacity = LOCKDOCKD_STREAM_BUF_INITIAL_CAP;
+    size_t capacity = lockdock_STREAM_BUF_INITIAL_CAP;
     size_t used = 0;
 
     if (stream == NULL || buffer_out == NULL || size_out == NULL) {
@@ -318,10 +316,9 @@ static bool lockdockd_read_stream_to_buffer(FILE *stream,
     return true;
 }
 
-static bool lockdockd_parse_system_profiler_stream(
-    FILE *stream,
-    LockDockdDisplayNameEntry *entries,
-    size_t *entry_count) {
+static bool lockdock_parse_system_profiler_stream(FILE *stream,
+                                                  LockDockDisplayNameEntry *entries,
+                                                  size_t *entry_count) {
     char *json_buffer = NULL;
     size_t json_size = 0;
     json_parse_result_t parse_result;
@@ -335,14 +332,14 @@ static bool lockdockd_parse_system_profiler_stream(
     *entry_count = 0;
     memset(&parse_result, 0, sizeof(parse_result));
 
-    if (!lockdockd_read_stream_to_buffer(stream, &json_buffer, &json_size)) {
+    if (!lockdock_read_stream_to_buffer(stream, &json_buffer, &json_size)) {
         return false;
     }
 
     root = json_parse_ex(json_buffer, json_size, json_parse_flags_default, NULL,
                          NULL, &parse_result);
     if (root != NULL) {
-        lockdockd_collect_display_names_from_value(root, entries, entry_count);
+        lockdock_collect_display_names_from_value(root, entries, entry_count);
         parsed = *entry_count > 0;
     }
 
@@ -351,7 +348,7 @@ static bool lockdockd_parse_system_profiler_stream(
     return parsed;
 }
 
-static bool lockdockd_wait_for_process(pid_t pid, int *status_out) {
+static bool lockdock_wait_for_process(pid_t pid, int *status_out) {
     int status = 0;
 
     while (waitpid(pid, &status, 0) < 0) {
@@ -367,10 +364,10 @@ static bool lockdockd_wait_for_process(pid_t pid, int *status_out) {
     return true;
 }
 
-static bool lockdockd_refresh_display_name_cache(void) {
+static bool lockdock_refresh_display_name_cache(void) {
     const char *const argv[] = {"/usr/sbin/system_profiler", "-json",
                                 "SPDisplaysDataType", NULL};
-    LockDockdDisplayNameEntry entries[LOCKDOCKD_MAX_DISPLAYS];
+    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS];
     size_t entry_count = 0;
     time_t refresh_attempt_at = time(NULL);
     int pipefd[2];
@@ -381,8 +378,8 @@ static bool lockdockd_refresh_display_name_cache(void) {
     bool refreshed = false;
 
     memset(entries, 0, sizeof(entries));
-    lockdockd_display_name_cache_last_refresh_attempt_at = refresh_attempt_at;
-    lockdockd_display_name_cache_needs_refresh = false;
+    lockdock_display_name_cache_last_refresh_attempt_at = refresh_attempt_at;
+    lockdock_display_name_cache_needs_refresh = false;
 
     if (pipe(pipefd) != 0) {
         return false;
@@ -401,7 +398,7 @@ static bool lockdockd_refresh_display_name_cache(void) {
         close(pipefd[0]);
 
         if (dup2(pipefd[1], STDOUT_FILENO) < 0) {
-            _exit(127);  // NOLINT
+            _exit(127);
         }
 
         stderr_fd = open("/dev/null", O_WRONLY);
@@ -409,47 +406,46 @@ static bool lockdockd_refresh_display_name_cache(void) {
             if (stderr_fd >= 0) {
                 close(stderr_fd);
             }
-            _exit(127);  // NOLINT
+            _exit(127);
         }
 
         close(stderr_fd);
         close(pipefd[1]);
         execv(argv[0], (char *const *)argv);
-        _exit(127);  // NOLINT
+        _exit(127);
     }
 
     close(pipefd[1]);
     stream = fdopen(pipefd[0], "r");
     if (stream != NULL) {
         parsed =
-            lockdockd_parse_system_profiler_stream(stream, entries, &entry_count);
+            lockdock_parse_system_profiler_stream(stream, entries, &entry_count);
         fclose(stream);
     } else {
         close(pipefd[0]);
     }
 
-    if (lockdockd_wait_for_process(pid, &status) && parsed && WIFEXITED(status) &&
+    if (lockdock_wait_for_process(pid, &status) && parsed && WIFEXITED(status) &&
         WEXITSTATUS(status) == 0) {
-        memcpy(lockdockd_display_name_cache, entries, sizeof(entries));
-        lockdockd_display_name_cache_count = entry_count;
+        memcpy(lockdock_display_name_cache, entries, sizeof(entries));
+        lockdock_display_name_cache_count = entry_count;
         refreshed = true;
     }
 
     return refreshed;
 }
 
-static bool lockdockd_copy_cached_display_name(CGDirectDisplayID display_id,
-                                               char *buffer,
-                                               size_t buffer_size) {
+static bool lockdock_copy_cached_display_name(CGDirectDisplayID display_id,
+                                              char *buffer,
+                                              size_t buffer_size) {
     if (buffer == NULL || buffer_size == 0) {
         return false;
     }
 
-    for (size_t i = 0; i < lockdockd_display_name_cache_count; i++) {
-        if (lockdockd_display_name_cache[i].display_id == display_id &&
-            lockdockd_display_name_cache[i].name[0] != '\0') {
-            snprintf(buffer, buffer_size, "%s",
-                     lockdockd_display_name_cache[i].name);
+    for (size_t i = 0; i < lockdock_display_name_cache_count; i++) {
+        if (lockdock_display_name_cache[i].display_id == display_id &&
+            lockdock_display_name_cache[i].name[0] != '\0') {
+            snprintf(buffer, buffer_size, "%s", lockdock_display_name_cache[i].name);
             return true;
         }
     }
@@ -457,9 +453,9 @@ static bool lockdockd_copy_cached_display_name(CGDirectDisplayID display_id,
     return false;
 }
 
-bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
-                                 char *buffer,
-                                 size_t buffer_size) {
+bool lockdock_copy_display_name(CGDirectDisplayID display_id,
+                                char *buffer,
+                                size_t buffer_size) {
     time_t now = time(NULL);
 
     if (buffer == NULL || buffer_size == 0) {
@@ -468,32 +464,32 @@ bool lockdockd_copy_display_name(CGDirectDisplayID display_id,
 
     buffer[0] = '\0';
 
-    if (lockdockd_copy_cached_display_name(display_id, buffer, buffer_size)) {
+    if (lockdock_copy_cached_display_name(display_id, buffer, buffer_size)) {
         return true;
     }
 
-    if (lockdockd_display_name_cache_needs_refresh ||
-        lockdockd_display_name_cache_last_refresh_attempt_at == 0 ||
-        difftime(now, lockdockd_display_name_cache_last_refresh_attempt_at) >=
-            LOCKDOCKD_SYSTEM_PROFILER_CACHE_TTL_SECONDS) {
-        if (!lockdockd_refresh_display_name_cache()) {
+    if (lockdock_display_name_cache_needs_refresh ||
+        lockdock_display_name_cache_last_refresh_attempt_at == 0 ||
+        difftime(now, lockdock_display_name_cache_last_refresh_attempt_at) >=
+            lockdock_SYSTEM_PROFILER_CACHE_TTL_SECONDS) {
+        if (!lockdock_refresh_display_name_cache()) {
             return false;
         }
     }
 
-    if (lockdockd_copy_cached_display_name(display_id, buffer, buffer_size)) {
+    if (lockdock_copy_cached_display_name(display_id, buffer, buffer_size)) {
         return true;
     }
 
     return false;
 }
 
-bool lockdockd_is_accessibility_trusted(void) {
+bool lockdock_is_accessibility_trusted(void) {
     return AXIsProcessTrusted();
 }
 
-static CGDirectDisplayID lockdockd_display_for_rect(CGRect rect) {
-    CGDirectDisplayID displays[LOCKDOCKD_MAX_DISPLAYS];
+static CGDirectDisplayID lockdock_display_for_rect(CGRect rect) {
+    CGDirectDisplayID displays[lockdock_MAX_DISPLAYS];
     uint32_t count = 0;
     CGDirectDisplayID best_display = 0;
     CGFloat best_area = 0;
@@ -502,7 +498,7 @@ static CGDirectDisplayID lockdockd_display_for_rect(CGRect rect) {
         return 0;
     }
 
-    CGGetActiveDisplayList(LOCKDOCKD_MAX_DISPLAYS, displays, &count);
+    CGGetActiveDisplayList(lockdock_MAX_DISPLAYS, displays, &count);
 
     for (uint32_t i = 0; i < count; i++) {
         CGRect bounds = CGDisplayBounds(displays[i]);
@@ -523,12 +519,12 @@ static CGDirectDisplayID lockdockd_display_for_rect(CGRect rect) {
         return best_display;
     }
 
-    return lockdockd_find_display_at_point(
+    return lockdock_find_display_at_point(
         CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect)));
 }
 
-static bool lockdockd_copy_dock_window_bounds_for_option(CGWindowListOption option,
-                                                         CGRect *bounds_out) {
+static bool lockdock_copy_dock_window_bounds_for_option(CGWindowListOption option,
+                                                        CGRect *bounds_out) {
     CFArrayRef windows_ref = CGWindowListCopyWindowInfo(option, kCGNullWindowID);
     CGRect best_bounds = CGRectZero;
     CGFloat best_area = 0;
@@ -598,7 +594,7 @@ static bool lockdockd_copy_dock_window_bounds_for_option(CGWindowListOption opti
     return true;
 }
 
-static bool lockdockd_copy_dock_window_bounds(CGRect *bounds_out) {
+static bool lockdock_copy_dock_window_bounds(CGRect *bounds_out) {
     const CGWindowListOption options[] = {
         kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
         kCGWindowListOptionAll,
@@ -609,7 +605,7 @@ static bool lockdockd_copy_dock_window_bounds(CGRect *bounds_out) {
     }
 
     for (size_t i = 0; i < (sizeof(options) / sizeof(options[0])); i++) {
-        if (lockdockd_copy_dock_window_bounds_for_option(options[i], bounds_out)) {
+        if (lockdock_copy_dock_window_bounds_for_option(options[i], bounds_out)) {
             return true;
         }
     }
@@ -617,7 +613,7 @@ static bool lockdockd_copy_dock_window_bounds(CGRect *bounds_out) {
     return false;
 }
 
-static pid_t lockdockd_find_dock_pid(void) {
+static pid_t lockdock_find_dock_pid(void) {
     const CGWindowListOption options[] = {
         kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
         kCGWindowListOptionAll,
@@ -666,8 +662,8 @@ static pid_t lockdockd_find_dock_pid(void) {
     return 0;
 }
 
-static bool lockdockd_copy_ax_element_bounds(AXUIElementRef element,
-                                             CGRect *bounds_out) {
+static bool lockdock_copy_ax_element_bounds(AXUIElementRef element,
+                                            CGRect *bounds_out) {
     CGPoint position = CGPointZero;
     CGSize size = CGSizeZero;
     CFTypeRef position_value = NULL;
@@ -704,15 +700,15 @@ static bool lockdockd_copy_ax_element_bounds(AXUIElementRef element,
     return true;
 }
 
-static CGDirectDisplayID lockdockd_get_dock_display_via_accessibility(void) {
-    pid_t dock_pid = lockdockd_find_dock_pid();
+static CGDirectDisplayID lockdock_get_dock_display_via_accessibility(void) {
+    pid_t dock_pid = lockdock_find_dock_pid();
     AXUIElementRef dock_element;
     CFArrayRef windows = NULL;
     CGRect best_bounds = CGRectZero;
     CGFloat best_area = 0;
     AXError error;
 
-    if (!lockdockd_is_accessibility_trusted() || dock_pid <= 0) {
+    if (!lockdock_is_accessibility_trusted() || dock_pid <= 0) {
         return 0;
     }
 
@@ -739,7 +735,7 @@ static CGDirectDisplayID lockdockd_get_dock_display_via_accessibility(void) {
         CGRect bounds = CGRectZero;
         CGFloat area;
 
-        if (!lockdockd_copy_ax_element_bounds(window, &bounds)) {
+        if (!lockdock_copy_ax_element_bounds(window, &bounds)) {
             continue;
         }
 
@@ -754,13 +750,13 @@ static CGDirectDisplayID lockdockd_get_dock_display_via_accessibility(void) {
     CFRelease(dock_element);
 
     if (!CGRectIsEmpty(best_bounds) && !CGRectIsNull(best_bounds)) {
-        return lockdockd_display_for_rect(best_bounds);
+        return lockdock_display_for_rect(best_bounds);
     }
 
     return 0;
 }
 
-static LockDockdDockOrientation lockdockd_copy_dock_orientation_value(void) {
+static LockDockDockOrientation lockdock_copy_dock_orientation_value(void) {
     CFPropertyListRef value =
         CFPreferencesCopyAppValue(CFSTR("orientation"), CFSTR("com.apple.dock"));
 
@@ -771,40 +767,40 @@ static LockDockdDockOrientation lockdockd_copy_dock_orientation_value(void) {
             if (CFStringCompare(orientation, CFSTR("left"), 0) ==
                 kCFCompareEqualTo) {
                 CFRelease(value);
-                return LOCKDOCKD_ORIENT_LEFT;
+                return lockdock_ORIENT_LEFT;
             }
 
             if (CFStringCompare(orientation, CFSTR("right"), 0) ==
                 kCFCompareEqualTo) {
                 CFRelease(value);
-                return LOCKDOCKD_ORIENT_RIGHT;
+                return lockdock_ORIENT_RIGHT;
             }
         }
 
         CFRelease(value);
     }
 
-    return LOCKDOCKD_ORIENT_BOTTOM;
+    return lockdock_ORIENT_BOTTOM;
 }
 
-void lockdockd_invalidate_dock_orientation_cache(void) {
+void lockdock_invalidate_dock_orientation_cache(void) {
     atomic_store(&g_dock_orientation_cache, 0);
 }
 
-LockDockdDockOrientation lockdockd_get_dock_orientation(void) {
+LockDockDockOrientation lockdock_get_dock_orientation(void) {
     uint32_t cached = atomic_load(&g_dock_orientation_cache);
 
     if (cached != 0) {
-        return (LockDockdDockOrientation)(cached - 1);
+        return (LockDockDockOrientation)(cached - 1);
     }
 
-    LockDockdDockOrientation orientation = lockdockd_copy_dock_orientation_value();
+    LockDockDockOrientation orientation = lockdock_copy_dock_orientation_value();
 
     atomic_store(&g_dock_orientation_cache, (uint32_t)orientation + 1);
     return orientation;
 }
 
-void lockdockd_reset_dock_probe(LockDockdDockProbe *probe) {
+void lockdock_reset_dock_probe(LockDockDockProbe *probe) {
     if (probe == NULL) {
         return;
     }
@@ -812,24 +808,24 @@ void lockdockd_reset_dock_probe(LockDockdDockProbe *probe) {
     memset(probe, 0, sizeof(*probe));
 }
 
-bool lockdockd_capture_dock_probe(LockDockdDockProbe *probe) {
+bool lockdock_capture_dock_probe(LockDockDockProbe *probe) {
     if (probe == NULL) {
         return false;
     }
 
-    lockdockd_reset_dock_probe(probe);
+    lockdock_reset_dock_probe(probe);
 
-    if (!lockdockd_copy_dock_window_bounds(&probe->window_bounds)) {
+    if (!lockdock_copy_dock_window_bounds(&probe->window_bounds)) {
         return false;
     }
 
     probe->has_window_bounds = true;
-    probe->window_display = lockdockd_display_for_rect(probe->window_bounds);
+    probe->window_display = lockdock_display_for_rect(probe->window_bounds);
     return true;
 }
 
-CGDirectDisplayID lockdockd_resolve_dock_probe(const LockDockdDockProbe *probe,
-                                               bool allow_slow_fallback) {
+CGDirectDisplayID lockdock_resolve_dock_probe(const LockDockDockProbe *probe,
+                                              bool allow_slow_fallback) {
     if (probe != NULL && probe->window_display != 0) {
         return probe->window_display;
     }
@@ -838,12 +834,12 @@ CGDirectDisplayID lockdockd_resolve_dock_probe(const LockDockdDockProbe *probe,
         return 0;
     }
 
-    return lockdockd_get_dock_display_via_accessibility();
+    return lockdock_get_dock_display_via_accessibility();
 }
 
-CGDirectDisplayID lockdockd_get_dock_display(void) {
-    LockDockdDockProbe probe;
+CGDirectDisplayID lockdock_get_dock_display(void) {
+    LockDockDockProbe probe;
 
-    lockdockd_capture_dock_probe(&probe);
-    return lockdockd_resolve_dock_probe(&probe, true);
+    lockdock_capture_dock_probe(&probe);
+    return lockdock_resolve_dock_probe(&probe, true);
 }

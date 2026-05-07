@@ -7,15 +7,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../src/lockdockd/lockdockd_platform.c"
+#include "../src/lockdock_platform.c"
 
-CGDirectDisplayID lockdockd_find_display_at_point(CGPoint point) {
+CGDirectDisplayID lockdock_find_display_at_point(CGPoint point) {
     (void)point;
     return 0;
 }
 
-static const LockDockdDisplayNameEntry *lockdock_test_find_entry(
-    const LockDockdDisplayNameEntry *entries,
+static const LockDockDisplayNameEntry *lockdock_test_find_entry(
+    const LockDockDisplayNameEntry *entries,
     size_t entry_count,
     CGDirectDisplayID display_id) {
     for (size_t i = 0; i < entry_count; i++) {
@@ -44,32 +44,32 @@ static FILE *lockdock_test_open_stream(const char *text) {
 }
 
 void setUp(void) {
-    lockdockd_invalidate_display_name_cache();
+    lockdock_invalidate_display_name_cache();
 }
 
 void tearDown(void) {
-    lockdockd_invalidate_display_name_cache();
+    lockdock_invalidate_display_name_cache();
 }
 
 static void test_parse_display_id_accepts_decimal_uint32_values(void) {
     CGDirectDisplayID display_id = 0;
 
-    TEST_ASSERT_TRUE(lockdockd_parse_display_id("1", &display_id));
+    TEST_ASSERT_TRUE(lockdock_parse_display_id("1", &display_id));
     TEST_ASSERT_EQUAL_UINT32(1, display_id);
 
-    TEST_ASSERT_TRUE(lockdockd_parse_display_id("4294967295", &display_id));
+    TEST_ASSERT_TRUE(lockdock_parse_display_id("4294967295", &display_id));
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, display_id);
 }
 
 static void test_parse_display_id_rejects_empty_zero_and_non_numeric_values(void) {
     CGDirectDisplayID display_id = 0;
 
-    TEST_ASSERT_FALSE(lockdockd_parse_display_id(NULL, &display_id));
-    TEST_ASSERT_FALSE(lockdockd_parse_display_id("", &display_id));
-    TEST_ASSERT_FALSE(lockdockd_parse_display_id("0", &display_id));
-    TEST_ASSERT_FALSE(lockdockd_parse_display_id("-1", &display_id));
-    TEST_ASSERT_FALSE(lockdockd_parse_display_id("abc", &display_id));
-    TEST_ASSERT_FALSE(lockdockd_parse_display_id("4294967296", &display_id));
+    TEST_ASSERT_FALSE(lockdock_parse_display_id(NULL, &display_id));
+    TEST_ASSERT_FALSE(lockdock_parse_display_id("", &display_id));
+    TEST_ASSERT_FALSE(lockdock_parse_display_id("0", &display_id));
+    TEST_ASSERT_FALSE(lockdock_parse_display_id("-1", &display_id));
+    TEST_ASSERT_FALSE(lockdock_parse_display_id("abc", &display_id));
+    TEST_ASSERT_FALSE(lockdock_parse_display_id("4294967296", &display_id));
 }
 
 static void test_parse_display_id_json_value_accepts_string_and_number_forms(void) {
@@ -77,29 +77,29 @@ static void test_parse_display_id_json_value_accepts_string_and_number_forms(voi
     json_value_t *value = lockdock_test_parse_json_value("\"12345\"");
 
     TEST_ASSERT_NOT_NULL(value);
-    TEST_ASSERT_TRUE(lockdockd_parse_display_id_json_value(value, &display_id));
+    TEST_ASSERT_TRUE(lockdock_parse_display_id_json_value(value, &display_id));
     TEST_ASSERT_EQUAL_UINT32(12345, display_id);
     free(value);
 
     value = lockdock_test_parse_json_value("67890");
     TEST_ASSERT_NOT_NULL(value);
-    TEST_ASSERT_TRUE(lockdockd_parse_display_id_json_value(value, &display_id));
+    TEST_ASSERT_TRUE(lockdock_parse_display_id_json_value(value, &display_id));
     TEST_ASSERT_EQUAL_UINT32(67890, display_id);
     free(value);
 
     value = lockdock_test_parse_json_value("true");
     TEST_ASSERT_NOT_NULL(value);
-    TEST_ASSERT_FALSE(lockdockd_parse_display_id_json_value(value, &display_id));
+    TEST_ASSERT_FALSE(lockdock_parse_display_id_json_value(value, &display_id));
     free(value);
 }
 
 static void test_cache_display_name_updates_existing_entry(void) {
-    LockDockdDisplayNameEntry entries[LOCKDOCKD_MAX_DISPLAYS] = {0};
+    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS] = {0};
     size_t entry_count = 0;
 
-    lockdockd_cache_display_name(entries, &entry_count, 42, "First");
-    lockdockd_cache_display_name(entries, &entry_count, 42, "Updated");
-    lockdockd_cache_display_name(entries, &entry_count, 77, "Second");
+    lockdock_cache_display_name(entries, &entry_count, 42, "First");
+    lockdock_cache_display_name(entries, &entry_count, 42, "Updated");
+    lockdock_cache_display_name(entries, &entry_count, 77, "Second");
 
     TEST_ASSERT_EQUAL_UINT32(2, (uint32_t)entry_count);
     TEST_ASSERT_EQUAL_STRING("Updated", entries[0].name);
@@ -127,13 +127,13 @@ static void test_parse_system_profiler_stream_collects_display_names(void) {
         "    ]"
         "  }"
         "}";
-    LockDockdDisplayNameEntry entries[LOCKDOCKD_MAX_DISPLAYS] = {0};
+    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS] = {0};
     size_t entry_count = 0;
     FILE *stream = lockdock_test_open_stream(json_text);
-    const LockDockdDisplayNameEntry *entry;
+    const LockDockDisplayNameEntry *entry;
 
     TEST_ASSERT_TRUE(
-        lockdockd_parse_system_profiler_stream(stream, entries, &entry_count));
+        lockdock_parse_system_profiler_stream(stream, entries, &entry_count));
     fclose(stream);
 
     TEST_ASSERT_EQUAL_UINT32(3, (uint32_t)entry_count);
@@ -152,12 +152,12 @@ static void test_parse_system_profiler_stream_collects_display_names(void) {
 }
 
 static void test_parse_system_profiler_stream_rejects_invalid_json(void) {
-    LockDockdDisplayNameEntry entries[LOCKDOCKD_MAX_DISPLAYS] = {0};
+    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS] = {0};
     size_t entry_count = 0;
     FILE *stream = lockdock_test_open_stream("{");
 
     TEST_ASSERT_FALSE(
-        lockdockd_parse_system_profiler_stream(stream, entries, &entry_count));
+        lockdock_parse_system_profiler_stream(stream, entries, &entry_count));
     fclose(stream);
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)entry_count);
 }

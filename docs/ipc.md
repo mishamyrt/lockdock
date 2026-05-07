@@ -1,7 +1,7 @@
-# lockdockd IPC protocol
+# lockdock IPC protocol
 
-A Unix socket is used to communicate with `lockdockd`.
-The socket is located at `~/Library/Caches/co.myrt.lockdockd/control.sock`.
+A Unix socket is used to communicate with `lockdock`.
+The socket is located at `~/Library/Caches/co.myrt.lockdock/control.sock`.
 
 ## Getting state
 
@@ -27,7 +27,7 @@ Response when the Dock **is not** pinned:
 - `target` — index of the display where the Dock is pinned.
 
 If the pinned display is disconnected, `target` disappears because the active lock is
-removed. When the same physical display is connected again, `lockdockd` moves the
+removed. When the same physical display is connected again, `lockdock` moves the
 Dock back to it and `target` appears again automatically.
 
 ## Pin Dock to the specified display

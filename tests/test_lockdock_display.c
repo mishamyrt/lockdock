@@ -50,7 +50,7 @@ static const LockDockTestDisplay *lockdock_test_find_display(
     return NULL;
 }
 
-#include "../../src/lockdockd/lockdockd_display.c"
+#include "../src/lockdock_display.c"
 
 CGError CGGetActiveDisplayList(uint32_t max_displays,
                                CGDirectDisplayID *active_displays,
@@ -132,31 +132,31 @@ void setUp(void) {
 void tearDown(void) {}
 
 static void test_display_identity_is_valid_accepts_any_stable_identifier(void) {
-    LockDockdDisplayIdentity identity = {0};
+    LockDockDisplayIdentity identity = {0};
 
-    TEST_ASSERT_FALSE(lockdockd_display_identity_is_valid(NULL));
-    TEST_ASSERT_FALSE(lockdockd_display_identity_is_valid(&identity));
+    TEST_ASSERT_FALSE(lockdock_display_identity_is_valid(NULL));
+    TEST_ASSERT_FALSE(lockdock_display_identity_is_valid(&identity));
 
     identity.is_builtin = true;
-    TEST_ASSERT_TRUE(lockdockd_display_identity_is_valid(&identity));
+    TEST_ASSERT_TRUE(lockdock_display_identity_is_valid(&identity));
 
     memset(&identity, 0, sizeof(identity));
     identity.vendor_number = 11;
-    TEST_ASSERT_TRUE(lockdockd_display_identity_is_valid(&identity));
+    TEST_ASSERT_TRUE(lockdock_display_identity_is_valid(&identity));
 
     memset(&identity, 0, sizeof(identity));
     snprintf(identity.uuid, sizeof(identity.uuid),
              "11111111-1111-1111-1111-111111111111");
-    TEST_ASSERT_TRUE(lockdockd_display_identity_is_valid(&identity));
+    TEST_ASSERT_TRUE(lockdock_display_identity_is_valid(&identity));
 }
 
 static void test_copy_display_identity_populates_uuid_and_numeric_fields(void) {
-    LockDockdDisplayIdentity identity;
+    LockDockDisplayIdentity identity;
 
     lockdock_test_add_display(100, CGRectMake(0, 0, 100, 100), true, 77, 88, 99,
                               "11111111-1111-1111-1111-111111111111");
 
-    TEST_ASSERT_TRUE(lockdockd_copy_display_identity(100, &identity));
+    TEST_ASSERT_TRUE(lockdock_copy_display_identity(100, &identity));
     TEST_ASSERT_TRUE(identity.is_builtin);
     TEST_ASSERT_EQUAL_UINT32(77, identity.vendor_number);
     TEST_ASSERT_EQUAL_UINT32(88, identity.model_number);
@@ -165,7 +165,7 @@ static void test_copy_display_identity_populates_uuid_and_numeric_fields(void) {
 }
 
 static void test_find_active_display_by_identity_prefers_uuid_match(void) {
-    LockDockdDisplayIdentity identity = {0};
+    LockDockDisplayIdentity identity = {0};
     CGDirectDisplayID display_id = 0;
 
     lockdock_test_add_display(10, CGRectMake(0, 0, 100, 100), false, 1, 2, 3,
@@ -180,13 +180,13 @@ static void test_find_active_display_by_identity_prefers_uuid_match(void) {
     identity.serial_number = 3;
 
     TEST_ASSERT_TRUE(
-        lockdockd_find_active_display_by_identity(&identity, &display_id));
+        lockdock_find_active_display_by_identity(&identity, &display_id));
     TEST_ASSERT_EQUAL_UINT32(20, display_id);
 }
 
 static void test_find_active_display_by_identity_falls_back_to_numeric_identity(
     void) {
-    LockDockdDisplayIdentity identity = {0};
+    LockDockDisplayIdentity identity = {0};
     CGDirectDisplayID display_id = 0;
 
     lockdock_test_add_display(30, CGRectMake(0, 0, 100, 100), true, 4, 5, 6,
@@ -200,7 +200,7 @@ static void test_find_active_display_by_identity_falls_back_to_numeric_identity(
     identity.serial_number = 6;
 
     TEST_ASSERT_TRUE(
-        lockdockd_find_active_display_by_identity(&identity, &display_id));
+        lockdock_find_active_display_by_identity(&identity, &display_id));
     TEST_ASSERT_EQUAL_UINT32(30, display_id);
 }
 
@@ -209,24 +209,24 @@ static void test_find_display_index_and_display_at_point_use_active_displays(voi
     lockdock_test_add_display(50, CGRectMake(120, 0, 120, 100), false, 0, 0, 0,
                               NULL);
 
-    TEST_ASSERT_EQUAL_INT(1, lockdockd_find_display_index(50));
-    TEST_ASSERT_EQUAL_INT(-1, lockdockd_find_display_index(999));
+    TEST_ASSERT_EQUAL_INT(1, lockdock_find_display_index(50));
+    TEST_ASSERT_EQUAL_INT(-1, lockdock_find_display_index(999));
     TEST_ASSERT_EQUAL_UINT32(40,
-                             lockdockd_find_display_at_point(CGPointMake(10, 10)));
+                             lockdock_find_display_at_point(CGPointMake(10, 10)));
     TEST_ASSERT_EQUAL_UINT32(50,
-                             lockdockd_find_display_at_point(CGPointMake(130, 10)));
+                             lockdock_find_display_at_point(CGPointMake(130, 10)));
     TEST_ASSERT_EQUAL_UINT32(0,
-                             lockdockd_find_display_at_point(CGPointMake(400, 10)));
+                             lockdock_find_display_at_point(CGPointMake(400, 10)));
 }
 
 static void test_find_safe_edge_segment_bottom_skips_overlaps(void) {
-    LockDockdSafeSegment segment;
+    LockDockSafeSegment segment;
 
     lockdock_test_add_display(60, CGRectMake(0, 0, 100, 100), false, 0, 0, 0, NULL);
     lockdock_test_add_display(61, CGRectMake(20, 100, 20, 30), false, 0, 0, 0, NULL);
     lockdock_test_add_display(62, CGRectMake(60, 100, 40, 30), false, 0, 0, 0, NULL);
 
-    segment = lockdockd_find_safe_edge_segment(60, LOCKDOCKD_ORIENT_BOTTOM);
+    segment = lockdock_find_safe_edge_segment(60, lockdock_ORIENT_BOTTOM);
     TEST_ASSERT_EQUAL_INT(0, (int)segment.start);
     TEST_ASSERT_EQUAL_INT(20, (int)segment.end);
     TEST_ASSERT_EQUAL_INT(20, (int)segment.width);
@@ -234,14 +234,14 @@ static void test_find_safe_edge_segment_bottom_skips_overlaps(void) {
 }
 
 static void test_find_safe_edge_segment_left_uses_largest_gap(void) {
-    LockDockdSafeSegment segment;
+    LockDockSafeSegment segment;
 
     lockdock_test_add_display(70, CGRectMake(200, 0, 100, 100), false, 0, 0, 0,
                               NULL);
     lockdock_test_add_display(71, CGRectMake(150, 20, 50, 20), false, 0, 0, 0, NULL);
     lockdock_test_add_display(72, CGRectMake(150, 70, 50, 30), false, 0, 0, 0, NULL);
 
-    segment = lockdockd_find_safe_edge_segment(70, LOCKDOCKD_ORIENT_LEFT);
+    segment = lockdock_find_safe_edge_segment(70, lockdock_ORIENT_LEFT);
     TEST_ASSERT_EQUAL_INT(40, (int)segment.start);
     TEST_ASSERT_EQUAL_INT(70, (int)segment.end);
     TEST_ASSERT_EQUAL_INT(30, (int)segment.width);
@@ -249,7 +249,7 @@ static void test_find_safe_edge_segment_left_uses_largest_gap(void) {
 }
 
 static void test_find_safe_edge_segment_right_merges_adjacent_overlaps(void) {
-    LockDockdSafeSegment segment;
+    LockDockSafeSegment segment;
 
     lockdock_test_add_display(80, CGRectMake(400, 0, 100, 100), false, 0, 0, 0,
                               NULL);
@@ -257,7 +257,7 @@ static void test_find_safe_edge_segment_right_merges_adjacent_overlaps(void) {
     lockdock_test_add_display(82, CGRectMake(500, 25, 50, 25), false, 0, 0, 0, NULL);
     lockdock_test_add_display(83, CGRectMake(500, 80, 50, 20), false, 0, 0, 0, NULL);
 
-    segment = lockdockd_find_safe_edge_segment(80, LOCKDOCKD_ORIENT_RIGHT);
+    segment = lockdock_find_safe_edge_segment(80, lockdock_ORIENT_RIGHT);
     TEST_ASSERT_EQUAL_INT(50, (int)segment.start);
     TEST_ASSERT_EQUAL_INT(80, (int)segment.end);
     TEST_ASSERT_EQUAL_INT(30, (int)segment.width);
@@ -266,13 +266,12 @@ static void test_find_safe_edge_segment_right_merges_adjacent_overlaps(void) {
 
 static void test_edge_point_has_contact_detects_bottom_corner_overlap(void) {
     lockdock_test_add_display(90, CGRectMake(0, 0, 100, 100), false, 0, 0, 0, NULL);
-    lockdock_test_add_display(91, CGRectMake(70, 100, 30, 40), false, 0, 0, 0,
-                              NULL);
+    lockdock_test_add_display(91, CGRectMake(70, 100, 30, 40), false, 0, 0, 0, NULL);
 
     TEST_ASSERT_TRUE(
-        lockdockd_edge_point_has_contact(90, LOCKDOCKD_ORIENT_BOTTOM, 90));
+        lockdock_edge_point_has_contact(90, lockdock_ORIENT_BOTTOM, 90));
     TEST_ASSERT_FALSE(
-        lockdockd_edge_point_has_contact(90, LOCKDOCKD_ORIENT_BOTTOM, 10));
+        lockdock_edge_point_has_contact(90, lockdock_ORIENT_BOTTOM, 10));
 }
 
 static void test_edge_point_has_contact_detects_side_corner_overlap(void) {
@@ -281,10 +280,9 @@ static void test_edge_point_has_contact_detects_side_corner_overlap(void) {
     lockdock_test_add_display(101, CGRectMake(150, 80, 50, 20), false, 0, 0, 0,
                               NULL);
 
-    TEST_ASSERT_TRUE(lockdockd_edge_point_has_contact(100, LOCKDOCKD_ORIENT_LEFT,
-                                                      90));
-    TEST_ASSERT_FALSE(lockdockd_edge_point_has_contact(100, LOCKDOCKD_ORIENT_LEFT,
-                                                       10));
+    TEST_ASSERT_TRUE(lockdock_edge_point_has_contact(100, lockdock_ORIENT_LEFT, 90));
+    TEST_ASSERT_FALSE(
+        lockdock_edge_point_has_contact(100, lockdock_ORIENT_LEFT, 10));
 }
 
 int main(void) {
