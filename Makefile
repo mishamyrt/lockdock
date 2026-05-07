@@ -39,6 +39,8 @@ CFLAGS = \
 	-I$(IPC_SRC_DIR) \
 	-I$(THIRDPARTY_DIR) \
 	-DAPP_VERSION="\"$(VERSION)\""
+CLANG_TIDY ?= clang-tidy
+TIDY_SRCS = $(IPC_SRCS) $(DAEMON_SRCS) $(CLI_SRCS)
 
 FRAMEWORKS = \
 	-framework CoreGraphics \
@@ -46,7 +48,7 @@ FRAMEWORKS = \
 	-framework ColorSync \
 	-framework CoreFoundation
 
-.PHONY: all clean install publish
+.PHONY: all clean fmt install publish tidy
 
 all: $(DAEMON_TARGET) $(CLI_TARGET)
 
@@ -77,6 +79,9 @@ fmt:
 		\( -iname '*.h' -o -iname '*.c' \) \
 		-not -path "*/thirdparty/*" \
 		| xargs clang-format -i
+
+tidy:
+	$(CLANG_TIDY) -quiet $(TIDY_SRCS) -- $(CFLAGS)
 
 install: $(CLI_TARGET) $(DAEMON_TARGET)
 	mkdir -p $(INSTALL_DIR)
