@@ -58,7 +58,7 @@ fmt:
 tidy:
 	$(CLANG_TIDY) -quiet $(SRCS) -- $(CFLAGS)
 
-install:
+install: $(TARGET)
 	mkdir -p $(INSTALL_DIR)
 	cp $^ $(INSTALL_DIR)
 
