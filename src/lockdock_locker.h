@@ -1,5 +1,5 @@
-#ifndef lockdock_LOCKER_H
-#define lockdock_LOCKER_H
+#ifndef LOCKDOCK_LOCKER_H
+#define LOCKDOCK_LOCKER_H
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <stdbool.h>

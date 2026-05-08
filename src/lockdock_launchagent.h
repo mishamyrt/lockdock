@@ -1,5 +1,5 @@
-#ifndef lockdock_LAUNCHAGENT_H
-#define lockdock_LAUNCHAGENT_H
+#ifndef LOCKDOCK_LAUNCHAGENT_H
+#define LOCKDOCK_LAUNCHAGENT_H
 
 #include <stdbool.h>
 #include <stddef.h>

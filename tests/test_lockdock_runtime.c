@@ -17,7 +17,7 @@ static CGDirectDisplayID g_builtin_display_id = 0;
 static CGDirectDisplayID g_named_display_id = 0;
 static bool g_has_platform_name = false;
 static char g_platform_name[256];
-static LockDockDockOrientation g_dock_orientation = lockdock_ORIENT_BOTTOM;
+static LockDockDockOrientation g_dock_orientation = LOCKDOCK_ORIENT_BOTTOM;
 static LockDockSafeSegment g_safe_segment = {0, 100, 100, 50};
 static bool g_edge_point_has_contact = false;
 static LockDockDockProbe g_dock_probe_sequence[4];
@@ -247,7 +247,7 @@ void setUp(void) {
     g_named_display_id = 0;
     g_has_platform_name = false;
     memset(g_platform_name, 0, sizeof(g_platform_name));
-    g_dock_orientation = lockdock_ORIENT_BOTTOM;
+    g_dock_orientation = LOCKDOCK_ORIENT_BOTTOM;
     g_safe_segment = (LockDockSafeSegment){0, 100, 100, 50};
     g_edge_point_has_contact = false;
     memset(g_dock_probe_sequence, 0, sizeof(g_dock_probe_sequence));
@@ -262,7 +262,7 @@ void setUp(void) {
 void tearDown(void) {}
 
 static void test_copy_display_label_prefers_builtin_name(void) {
-    char label[lockdock_DISPLAY_NAME_BUFFER_SIZE];
+    char label[LOCKDOCK_DISPLAY_NAME_BUFFER_SIZE];
 
     g_builtin_display_id = 12;
     TEST_ASSERT_TRUE(lockdock_copy_display_label(12, label, sizeof(label)));
@@ -270,7 +270,7 @@ static void test_copy_display_label_prefers_builtin_name(void) {
 }
 
 static void test_copy_display_label_uses_platform_name_before_fallback(void) {
-    char label[lockdock_DISPLAY_NAME_BUFFER_SIZE];
+    char label[LOCKDOCK_DISPLAY_NAME_BUFFER_SIZE];
 
     g_named_display_id = 33;
     g_has_platform_name = true;
@@ -297,7 +297,7 @@ static void test_status_index_for_display_finds_matching_display(void) {
 
 static void test_query_status_reports_current_dock_display(void) {
     LockDockStatus status;
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
 
     g_active_displays[0] = 100;
     g_active_displays[1] = 200;
@@ -313,7 +313,7 @@ static void test_query_status_reports_current_dock_display(void) {
 
 static void test_query_status_distinguishes_accessibility_error_states(void) {
     LockDockStatus status;
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
 
     g_active_displays[0] = 300;
     g_active_display_count = 1;
@@ -330,7 +330,7 @@ static void test_query_status_distinguishes_accessibility_error_states(void) {
 
 static void test_query_status_rejects_dock_display_outside_active_list(void) {
     LockDockStatus status;
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
 
     g_active_displays[0] = 400;
     g_active_display_count = 1;
@@ -343,13 +343,13 @@ static void test_query_status_rejects_dock_display_outside_active_list(void) {
 
 static void test_relocate_display_uses_right_edge_when_bottom_corner_has_no_contact(
     void) {
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
 
     g_active_displays[0] = 11;
     g_active_displays[1] = 12;
     g_active_display_count = 2;
     g_builtin_display_id = 12;
-    g_dock_orientation = lockdock_ORIENT_BOTTOM;
+    g_dock_orientation = LOCKDOCK_ORIENT_BOTTOM;
     g_safe_segment = (LockDockSafeSegment){2000, 3000, 1000, 2500};
     g_edge_point_has_contact = false;
 
@@ -371,12 +371,12 @@ static void test_relocate_display_uses_right_edge_when_bottom_corner_has_no_cont
 
 static void test_relocate_display_falls_back_to_safe_segment_when_corner_has_contact(
     void) {
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
 
     g_active_displays[0] = 12;
     g_active_display_count = 1;
     g_builtin_display_id = 12;
-    g_dock_orientation = lockdock_ORIENT_BOTTOM;
+    g_dock_orientation = LOCKDOCK_ORIENT_BOTTOM;
     g_safe_segment = (LockDockSafeSegment){2000, 3000, 1000, 2500};
     g_edge_point_has_contact = true;
 
@@ -397,11 +397,11 @@ static void test_relocate_display_falls_back_to_safe_segment_when_corner_has_con
 
 static void test_relocate_display_uses_bottom_edge_when_side_corner_has_no_contact(
     void) {
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
 
     g_active_displays[0] = 22;
     g_active_display_count = 1;
-    g_dock_orientation = lockdock_ORIENT_LEFT;
+    g_dock_orientation = LOCKDOCK_ORIENT_LEFT;
     g_safe_segment = (LockDockSafeSegment){0, 600, 600, 300};
     g_edge_point_has_contact = false;
 

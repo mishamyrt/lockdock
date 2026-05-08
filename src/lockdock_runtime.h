@@ -1,5 +1,5 @@
-#ifndef lockdock_RUNTIME_H
-#define lockdock_RUNTIME_H
+#ifndef LOCKDOCK_RUNTIME_H
+#define LOCKDOCK_RUNTIME_H
 
 #include "lockdock_display.h"
 
@@ -7,11 +7,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define lockdock_DISPLAY_NAME_BUFFER_SIZE 256
-#define lockdock_ERROR_BUFFER_SIZE 512
+#define LOCKDOCK_DISPLAY_NAME_BUFFER_SIZE 256
+#define LOCKDOCK_ERROR_BUFFER_SIZE 512
 
 typedef struct {
-    CGDirectDisplayID displays[lockdock_MAX_DISPLAYS];
+    CGDirectDisplayID displays[LOCKDOCK_MAX_DISPLAYS];
     uint32_t display_count;
     int location_index;
 } LockDockStatus;

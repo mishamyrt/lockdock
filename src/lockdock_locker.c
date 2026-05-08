@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define lockdock_LOCKER_ERROR_BUFFER_SIZE 256
+#define LOCKDOCK_LOCKER_ERROR_BUFFER_SIZE 256
 
 static _Atomic uint32_t g_locked_display = 0;
 static double g_lock_edge_zone = 4.0;
@@ -26,7 +26,7 @@ static pthread_cond_t g_event_thread_cond = PTHREAD_COND_INITIALIZER;
 static bool g_event_thread_starting = false;
 static bool g_event_thread_running = false;
 static bool g_event_thread_joinable = false;
-static char g_event_thread_error[lockdock_LOCKER_ERROR_BUFFER_SIZE];
+static char g_event_thread_error[LOCKDOCK_LOCKER_ERROR_BUFFER_SIZE];
 
 static void lockdock_locker_enable_tap(void) {
     if (g_event_tap != NULL) {
@@ -38,11 +38,11 @@ static CGFloat lockdock_distance_from_dock_edge(
     CGPoint point,
     CGRect bounds,
     LockDockDockOrientation orientation) {
-    if (orientation == lockdock_ORIENT_LEFT) {
+    if (orientation == LOCKDOCK_ORIENT_LEFT) {
         return point.x - bounds.origin.x;
     }
 
-    if (orientation == lockdock_ORIENT_RIGHT) {
+    if (orientation == LOCKDOCK_ORIENT_RIGHT) {
         return (bounds.origin.x + bounds.size.width) - point.x;
     }
 

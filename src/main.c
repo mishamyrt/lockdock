@@ -1,3 +1,4 @@
+#include "lockdock_config.h"
 #include "lockdock_daemon.h"
 #include "lockdock_ipc.h"
 #include "lockdock_launchagent.h"
@@ -9,10 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef LOCKDOCK_VERSION
-#define LOCKDOCK_VERSION "dev"
-#endif
 
 static int handle_enable(void) {
     char message[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];

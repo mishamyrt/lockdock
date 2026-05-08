@@ -1,19 +1,19 @@
-#ifndef lockdock_DISPLAY_H
-#define lockdock_DISPLAY_H
+#ifndef LOCKDOCK_DISPLAY_H
+#define LOCKDOCK_DISPLAY_H
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-#define lockdock_MAX_DISPLAYS 32
-#define lockdock_DISPLAY_UUID_BUFFER_SIZE 64
+#define LOCKDOCK_MAX_DISPLAYS 32
+#define LOCKDOCK_DISPLAY_UUID_BUFFER_SIZE 64
 
 typedef struct {
     bool is_builtin;
     uint32_t vendor_number;
     uint32_t model_number;
     uint32_t serial_number;
-    char uuid[lockdock_DISPLAY_UUID_BUFFER_SIZE];
+    char uuid[LOCKDOCK_DISPLAY_UUID_BUFFER_SIZE];
 } LockDockDisplayIdentity;
 
 typedef struct {
@@ -24,9 +24,9 @@ typedef struct {
 } LockDockSafeSegment;
 
 typedef enum : uint8_t {
-    lockdock_ORIENT_BOTTOM = 0,
-    lockdock_ORIENT_LEFT = 1,
-    lockdock_ORIENT_RIGHT = 2,
+    LOCKDOCK_ORIENT_BOTTOM = 0,
+    LOCKDOCK_ORIENT_LEFT = 1,
+    LOCKDOCK_ORIENT_RIGHT = 2,
 } LockDockDockOrientation;
 
 uint32_t lockdock_get_active_displays(CGDirectDisplayID *displays,

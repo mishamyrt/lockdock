@@ -1,5 +1,7 @@
 #include "lockdock_ipc.h"
 
+#include "lockdock_config.h"
+
 #include <json.h>
 
 #include <errno.h>
@@ -62,7 +64,7 @@ static bool lockdock_ipc_copy_socket_dir(char *buffer,
     }
 
     if (snprintf(buffer, buffer_size, "%s/Library/Caches/%s", home,
-                 LOCKDOCK_IPC_BUNDLE_ID) >= (int)buffer_size) {
+                 LOCKDOCK_BUNDLE_ID) >= (int)buffer_size) {
         lockdock_ipc_set_error(error, error_size,
                                "Socket directory path is too long");
         return false;

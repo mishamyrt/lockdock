@@ -93,7 +93,7 @@ static void lockdock_result_response(bool success,
                                      char *buffer,
                                      size_t buffer_size) {
     LockDockIpcResult result;
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
 
     memset(&result, 0, sizeof(result));
     result.success = success;
@@ -277,8 +277,8 @@ static bool lockdock_restore_runtime_state(const LockDockStateSnapshot *snapshot
                                            bool restore_dock_display,
                                            char *error,
                                            size_t error_size) {
-    char dock_error[lockdock_ERROR_BUFFER_SIZE] = "";
-    char lock_error[lockdock_ERROR_BUFFER_SIZE] = "";
+    char dock_error[LOCKDOCK_ERROR_BUFFER_SIZE] = "";
+    char lock_error[LOCKDOCK_ERROR_BUFFER_SIZE] = "";
     bool dock_restored = true;
     bool lock_restored = true;
 
@@ -354,8 +354,8 @@ static void lockdock_set_rollback_error(char *error,
 
 static bool lockdock_apply_unlock(char *error, size_t error_size) {
     LockDockStateSnapshot previous_state;
-    char operation_error[lockdock_ERROR_BUFFER_SIZE];
-    char preference_rollback_error[lockdock_ERROR_BUFFER_SIZE] = "";
+    char operation_error[LOCKDOCK_ERROR_BUFFER_SIZE];
+    char preference_rollback_error[LOCKDOCK_ERROR_BUFFER_SIZE] = "";
 
     if (!lockdock_capture_state_snapshot(&previous_state, NULL, false, error,
                                          error_size)) {
@@ -389,9 +389,9 @@ static bool lockdock_apply_set_state(
     LockDockStateSnapshot previous_state;
     bool restore_dock_display = false;
     bool clear_existing_lock_for_relocation = false;
-    char operation_error[lockdock_ERROR_BUFFER_SIZE];
-    char preference_rollback_error[lockdock_ERROR_BUFFER_SIZE] = "";
-    char runtime_rollback_error[lockdock_ERROR_BUFFER_SIZE] = "";
+    char operation_error[LOCKDOCK_ERROR_BUFFER_SIZE];
+    char preference_rollback_error[LOCKDOCK_ERROR_BUFFER_SIZE] = "";
+    char runtime_rollback_error[LOCKDOCK_ERROR_BUFFER_SIZE] = "";
 
     if (preferred_identity == NULL) {
         lockdock_set_error(error, error_size, "Internal error");
@@ -474,7 +474,7 @@ static bool lockdock_apply_set_state(
 static void lockdock_handle_request(const LockDockIpcRequest *request,
                                     char *response,
                                     size_t response_size) {
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
     LockDockDisplayIdentity preferred_identity;
     LockDockStatus status;
     CGDirectDisplayID display_id = 0;
@@ -639,7 +639,7 @@ static int lockdock_probe_existing_socket(const char *socket_path,
     return 0;
 }
 
-#define lockdock_SOCKET_BACKLOG 8
+#define LOCKDOCK_SOCKET_BACKLOG 8
 
 static int lockdock_open_server_socket(char *socket_path,
                                        size_t socket_path_size,
@@ -681,7 +681,7 @@ static int lockdock_open_server_socket(char *socket_path,
         return -1;
     }
 
-    if (listen(fd, lockdock_SOCKET_BACKLOG) != 0) {
+    if (listen(fd, LOCKDOCK_SOCKET_BACKLOG) != 0) {
         snprintf(error, error_size, "Failed to listen on daemon socket: %s",
                  strerror(errno));
         close(fd);
@@ -756,10 +756,10 @@ static bool lockdock_open_wakeup_pipe(char *error, size_t error_size) {
     return true;
 }
 
-#define lockdock_DRAIN_WAKEUP_PIPE_BUFFER 64
+#define LOCKDOCK_DRAIN_WAKEUP_PIPE_BUFFER 64
 
 static void lockdock_drain_wakeup_pipe(void) {
-    char buffer[lockdock_DRAIN_WAKEUP_PIPE_BUFFER];
+    char buffer[LOCKDOCK_DRAIN_WAKEUP_PIPE_BUFFER];
 
     if (g_daemon_wakeup_pipe[0] < 0) {
         return;
@@ -793,7 +793,7 @@ static void lockdock_reconcile_pending_display_state(char *error,
 
 int lockdock_run_daemon(void) {
     char socket_path[PATH_MAX];
-    char error[lockdock_ERROR_BUFFER_SIZE];
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE];
     int listen_fd = -1;
 
     signal(SIGINT, lockdock_signal_handler);

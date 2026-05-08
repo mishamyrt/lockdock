@@ -1,5 +1,5 @@
-#ifndef lockdock_OBJC_BRIDGE_H
-#define lockdock_OBJC_BRIDGE_H
+#ifndef LOCKDOCK_OBJC_BRIDGE_H
+#define LOCKDOCK_OBJC_BRIDGE_H
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <stdbool.h>

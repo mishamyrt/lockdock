@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define lockdock_MAX_OVERLAPS 64
-#define lockdock_MIN_OVERLAP 2.0
+#define LOCKDOCK_MAX_OVERLAPS 64
+#define LOCKDOCK_MIN_OVERLAPS 2.0
 
 typedef struct {
     CGFloat start;
@@ -103,14 +103,14 @@ static bool lockdock_display_identity_fallback_matches(
 
 static void lockdock_for_each_active_display(LockDockActiveDisplayVisitor visitor,
                                              void *context) {
-    CGDirectDisplayID displays[lockdock_MAX_DISPLAYS];
+    CGDirectDisplayID displays[LOCKDOCK_MAX_DISPLAYS];
     uint32_t count = 0;
 
     if (visitor == NULL) {
         return;
     }
 
-    count = lockdock_get_active_displays(displays, lockdock_MAX_DISPLAYS);
+    count = lockdock_get_active_displays(displays, LOCKDOCK_MAX_DISPLAYS);
 
     for (uint32_t i = 0; i < count; i++) {
         if (!visitor(displays[i], i, context)) {
@@ -218,7 +218,7 @@ static bool lockdock_collect_display_overlap(CGDirectDisplayID display_id,
 
     other = CGDisplayBounds(display_id);
 
-    if (collection->edge == lockdock_ORIENT_BOTTOM) {
+    if (collection->edge == LOCKDOCK_ORIENT_BOTTOM) {
         other_min_along = other.origin.x;
         other_max_along = other.origin.x + other.size.width;
         other_min_cross = other.origin.y;
@@ -239,13 +239,13 @@ static bool lockdock_collect_display_overlap(CGDirectDisplayID display_id,
     overlap_end = fmin(collection->edge_max, other_max_along);
 
     if (overlap_end > overlap_start &&
-        (overlap_end - overlap_start) > lockdock_MIN_OVERLAP) {
+        (overlap_end - overlap_start) > LOCKDOCK_MIN_OVERLAPS) {
         collection->overlaps[collection->overlap_count].start = overlap_start;
         collection->overlaps[collection->overlap_count].end = overlap_end;
         collection->overlap_count++;
     }
 
-    return collection->overlap_count < lockdock_MAX_OVERLAPS;
+    return collection->overlap_count < LOCKDOCK_MAX_OVERLAPS;
 }
 
 static bool lockdock_find_display_index_match(CGDirectDisplayID display_id,
@@ -345,14 +345,14 @@ bool lockdock_edge_point_has_contact(CGDirectDisplayID target_id,
     CGFloat edge_min;
     CGFloat edge_max;
     CGFloat edge_cross_pos;
-    LockDockOverlap overlaps[lockdock_MAX_OVERLAPS];
+    LockDockOverlap overlaps[LOCKDOCK_MAX_OVERLAPS];
     LockDockOverlapCollectionContext overlap_collection = {0};
 
-    if (edge == lockdock_ORIENT_BOTTOM) {
+    if (edge == LOCKDOCK_ORIENT_BOTTOM) {
         edge_min = target.origin.x;
         edge_max = target.origin.x + target.size.width;
         edge_cross_pos = target.origin.y + target.size.height;
-    } else if (edge == lockdock_ORIENT_LEFT) {
+    } else if (edge == LOCKDOCK_ORIENT_LEFT) {
         edge_min = target.origin.y;
         edge_max = target.origin.y + target.size.height;
         edge_cross_pos = target.origin.x;
@@ -392,16 +392,16 @@ LockDockSafeSegment lockdock_find_safe_edge_segment(CGDirectDisplayID target_id,
     CGFloat edge_min;
     CGFloat edge_max;
     CGFloat edge_cross_pos;
-    LockDockOverlap overlaps[lockdock_MAX_OVERLAPS];
+    LockDockOverlap overlaps[LOCKDOCK_MAX_OVERLAPS];
     LockDockOverlapCollectionContext overlap_collection = {0};
     LockDockSafeSegment best = {0, 0, 0, 0};
     CGFloat pos;
 
-    if (edge == lockdock_ORIENT_BOTTOM) {
+    if (edge == LOCKDOCK_ORIENT_BOTTOM) {
         edge_min = target.origin.x;
         edge_max = target.origin.x + target.size.width;
         edge_cross_pos = target.origin.y + target.size.height;
-    } else if (edge == lockdock_ORIENT_LEFT) {
+    } else if (edge == LOCKDOCK_ORIENT_LEFT) {
         edge_min = target.origin.y;
         edge_max = target.origin.y + target.size.height;
         edge_cross_pos = target.origin.x;

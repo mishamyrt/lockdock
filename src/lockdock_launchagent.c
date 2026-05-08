@@ -1,6 +1,6 @@
 #include "lockdock_launchagent.h"
 
-#include "lockdock_ipc.h"
+#include "lockdock_config.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -174,7 +174,7 @@ static bool lockdock_copy_plist_path(char *buffer,
     }
 
     if (snprintf(buffer, buffer_size, "%s/%s.plist", directory,
-                 LOCKDOCK_LAUNCHAGENT_LABEL) >= (int)buffer_size) {
+                 LOCKDOCK_BUNDLE_ID) >= (int)buffer_size) {
         lockdock_set_message(error, error_size,
                              "LaunchAgent plist path is too long");
         return false;
@@ -284,7 +284,7 @@ static bool lockdock_copy_service_target(char *buffer,
                                          char *error,
                                          size_t error_size) {
     if (snprintf(buffer, buffer_size, "gui/%u/%s", (unsigned)getuid(),
-                 LOCKDOCK_LAUNCHAGENT_LABEL) >= (int)buffer_size) {
+                 LOCKDOCK_BUNDLE_ID) >= (int)buffer_size) {
         lockdock_set_message(error, error_size,
                              "launchctl service target is too long");
         return false;
@@ -317,7 +317,7 @@ static bool lockdock_build_plist(char *buffer,
             "    <key>Label</key>\n"
             "    <string>") ||
         !lockdock_append_xml_escaped(buffer, buffer_size, &used,
-                                     LOCKDOCK_LAUNCHAGENT_LABEL) ||
+                                     LOCKDOCK_BUNDLE_ID) ||
         !lockdock_append_cstring(buffer, buffer_size, &used,
                                  "</string>\n"
                                  "    <key>ProgramArguments</key>\n"

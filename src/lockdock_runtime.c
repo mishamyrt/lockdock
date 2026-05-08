@@ -12,14 +12,14 @@
 #include <string.h>
 #include <unistd.h>
 
-static const int lockdock_RELOCATION_NUDGE_ATTEMPTS = 60;
-static const int lockdock_RELOCATION_PROBE_INTERVAL = 3;
-static const useconds_t lockdock_RELOCATION_NUDGE_DELAY_US = 15000;
-static const int lockdock_RELOCATION_VERIFY_ATTEMPTS = 8;
-static const useconds_t lockdock_RELOCATION_VERIFY_DELAY_US = 10000;
-static const useconds_t lockdock_RELOCATION_APPROACH_DELAY_US = 30000;
-static const int lockdock_RELOCATION_EDGE_MOVE_STEPS = 10;
-static const useconds_t lockdock_RELOCATION_EDGE_MOVE_DELAY_US = 15000;
+static const int LOCKDOCK_RELOCATION_NUDGE_ATTEMPTS = 60;
+static const int LOCKDOCK_RELOCATION_PROBE_INTERVAL = 3;
+static const useconds_t LOCKDOCK_RELOCATION_NUDGE_DELAY_US = 15000;
+static const int LOCKDOCK_RELOCATION_VERIFY_ATTEMPTS = 8;
+static const useconds_t LOCKDOCK_RELOCATION_VERIFY_DELAY_US = 10000;
+static const useconds_t LOCKDOCK_RELOCATION_APPROACH_DELAY_US = 30000;
+static const int LOCKDOCK_RELOCATION_EDGE_MOVE_STEPS = 10;
+static const useconds_t LOCKDOCK_RELOCATION_EDGE_MOVE_DELAY_US = 15000;
 
 static void lockdock_set_error(char *buffer,
                                size_t buffer_size,
@@ -80,7 +80,7 @@ bool lockdock_query_status(LockDockStatus *status, char *error, size_t error_siz
     memset(status, 0, sizeof(*status));
     status->location_index = -1;
     status->display_count =
-        lockdock_get_active_displays(status->displays, lockdock_MAX_DISPLAYS);
+        lockdock_get_active_displays(status->displays, LOCKDOCK_MAX_DISPLAYS);
 
     dock_display = lockdock_get_dock_display();
     if (dock_display == 0) {
@@ -160,11 +160,11 @@ static void lockdock_post_edge_nudge(CGEventSourceRef source,
         return;
     }
 
-    if (orientation == lockdock_ORIENT_BOTTOM) {
+    if (orientation == LOCKDOCK_ORIENT_BOTTOM) {
         CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, 1);
-    } else if (orientation == lockdock_ORIENT_LEFT) {
+    } else if (orientation == LOCKDOCK_ORIENT_LEFT) {
         CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, -1);
-    } else if (orientation == lockdock_ORIENT_RIGHT) {
+    } else if (orientation == LOCKDOCK_ORIENT_RIGHT) {
         CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, 1);
     }
 
@@ -195,11 +195,11 @@ static bool lockdock_wait_for_dock_relocation(CGEventSourceRef source,
 
     lockdock_reset_dock_probe(&probe);
 
-    for (int i = 0; i < lockdock_RELOCATION_NUDGE_ATTEMPTS; i++) {
+    for (int i = 0; i < LOCKDOCK_RELOCATION_NUDGE_ATTEMPTS; i++) {
         lockdock_post_edge_nudge(source, edge, orientation);
-        usleep(lockdock_RELOCATION_NUDGE_DELAY_US);
+        usleep(LOCKDOCK_RELOCATION_NUDGE_DELAY_US);
 
-        if (((i + 1) % lockdock_RELOCATION_PROBE_INTERVAL) == 0 &&
+        if (((i + 1) % LOCKDOCK_RELOCATION_PROBE_INTERVAL) == 0 &&
             lockdock_probe_dock_display(display_id, &probe)) {
             if (probe_out != NULL) {
                 *probe_out = probe;
@@ -209,7 +209,7 @@ static bool lockdock_wait_for_dock_relocation(CGEventSourceRef source,
         }
     }
 
-    for (int i = 0; i < lockdock_RELOCATION_VERIFY_ATTEMPTS; i++) {
+    for (int i = 0; i < LOCKDOCK_RELOCATION_VERIFY_ATTEMPTS; i++) {
         if (lockdock_probe_dock_display(display_id, &probe)) {
             if (probe_out != NULL) {
                 *probe_out = probe;
@@ -218,7 +218,7 @@ static bool lockdock_wait_for_dock_relocation(CGEventSourceRef source,
             return true;
         }
 
-        usleep(lockdock_RELOCATION_VERIFY_DELAY_US);
+        usleep(LOCKDOCK_RELOCATION_VERIFY_DELAY_US);
     }
 
     if (probe_out != NULL) {
@@ -251,7 +251,7 @@ static CGFloat lockdock_choose_trigger_coordinate(
     CGRect bounds = CGDisplayBounds(target_display_id);
     CGFloat preferred_coordinate;
 
-    if (orientation == lockdock_ORIENT_BOTTOM) {
+    if (orientation == LOCKDOCK_ORIENT_BOTTOM) {
         preferred_coordinate = bounds.origin.x + bounds.size.width - 10.0;
         if (preferred_coordinate < bounds.origin.x) {
             preferred_coordinate = bounds.origin.x;
@@ -308,7 +308,7 @@ bool lockdock_relocate_display(CGDirectDisplayID display_id,
     const CGFloat edge_offset = 1.0;
 
     switch (orientation) {
-        case lockdock_ORIENT_BOTTOM: {
+        case LOCKDOCK_ORIENT_BOTTOM: {
             CGFloat edge_y = bounds.origin.y + bounds.size.height;
             CGFloat trigger_x = lockdock_choose_trigger_coordinate(
                 display_id, orientation, safe_segment);
@@ -318,7 +318,7 @@ bool lockdock_relocate_display(CGDirectDisplayID display_id,
             break;
         }
 
-        case lockdock_ORIENT_LEFT: {
+        case LOCKDOCK_ORIENT_LEFT: {
             CGFloat edge_x = bounds.origin.x;
             CGFloat trigger_y = lockdock_choose_trigger_coordinate(
                 display_id, orientation, safe_segment);
@@ -328,7 +328,7 @@ bool lockdock_relocate_display(CGDirectDisplayID display_id,
             break;
         }
 
-        case lockdock_ORIENT_RIGHT: {
+        case LOCKDOCK_ORIENT_RIGHT: {
             CGFloat edge_x = bounds.origin.x + bounds.size.width;
             CGFloat trigger_y = lockdock_choose_trigger_coordinate(
                 display_id, orientation, safe_segment);
@@ -341,10 +341,10 @@ bool lockdock_relocate_display(CGDirectDisplayID display_id,
 
     CGWarpMouseCursorPosition(approach);
     lockdock_post_move_event(source, approach);
-    usleep(lockdock_RELOCATION_APPROACH_DELAY_US);
+    usleep(LOCKDOCK_RELOCATION_APPROACH_DELAY_US);
 
-    lockdock_smooth_move(source, approach, edge, lockdock_RELOCATION_EDGE_MOVE_STEPS,
-                         lockdock_RELOCATION_EDGE_MOVE_DELAY_US);
+    lockdock_smooth_move(source, approach, edge, LOCKDOCK_RELOCATION_EDGE_MOVE_STEPS,
+                         LOCKDOCK_RELOCATION_EDGE_MOVE_DELAY_US);
     relocated_via_fast_probe = lockdock_wait_for_dock_relocation(
         source, edge, orientation, display_id, &dock_probe);
 

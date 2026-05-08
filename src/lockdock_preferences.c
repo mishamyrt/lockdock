@@ -1,8 +1,7 @@
 #include "lockdock_preferences.h"
 
+#include "lockdock_config.h"
 #include "lockdock_display.h"
-
-#include "lockdock_ipc.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdbool.h>
@@ -13,14 +12,14 @@
 #include <stdlib.h>
 #endif
 
-#define lockdock_PREFERRED_UUID_KEY CFSTR("preferredDisplayUUID")
-#define lockdock_PREFERRED_BUILTIN_KEY CFSTR("preferredDisplayBuiltin")
-#define lockdock_PREFERRED_VENDOR_KEY CFSTR("preferredDisplayVendor")
-#define lockdock_PREFERRED_MODEL_KEY CFSTR("preferredDisplayModel")
-#define lockdock_PREFERRED_SERIAL_KEY CFSTR("preferredDisplaySerial")
-#define lockdock_PREFERENCES_DOMAIN CFSTR(LOCKDOCK_IPC_BUNDLE_ID)
+#define LOCKDOCK_PREFERRED_UUID_KEY CFSTR("preferredDisplayUUID")
+#define LOCKDOCK_PREFERRED_BUILTIN_KEY CFSTR("preferredDisplayBuiltin")
+#define LOCKDOCK_PREFERRED_VENDOR_KEY CFSTR("preferredDisplayVendor")
+#define LOCKDOCK_PREFERRED_MODEL_KEY CFSTR("preferredDisplayModel")
+#define LOCKDOCK_PREFERRED_SERIAL_KEY CFSTR("preferredDisplaySerial")
+#define LOCKDOCK_PREFERENCES_DOMAIN CFSTR(LOCKDOCK_BUNDLE_ID)
 #ifdef LOCKDOCK_TESTING
-#define lockdock_TEST_PREFERENCES_DOMAIN_ENV "LOCKDOCK_TEST_PREFERENCES_DOMAIN"
+#define LOCKDOCK_TEST_PREFERENCES_DOMAIN_ENV "LOCKDOCK_TEST_PREFERENCES_DOMAIN"
 
 typedef struct {
     bool has_value;
@@ -43,7 +42,7 @@ static void lockdock_set_error(char *buffer,
 
 static CFStringRef lockdock_preferences_copy_domain(void) {
 #ifdef LOCKDOCK_TESTING
-    const char *override_domain = getenv(lockdock_TEST_PREFERENCES_DOMAIN_ENV);
+    const char *override_domain = getenv(LOCKDOCK_TEST_PREFERENCES_DOMAIN_ENV);
 
     if (override_domain != NULL && override_domain[0] != '\0') {
         return CFStringCreateWithCString(kCFAllocatorDefault, override_domain,
@@ -51,12 +50,12 @@ static CFStringRef lockdock_preferences_copy_domain(void) {
     }
 #endif
 
-    return CFRetain(lockdock_PREFERENCES_DOMAIN);
+    return CFRetain(LOCKDOCK_PREFERENCES_DOMAIN);
 }
 
 #ifdef LOCKDOCK_TESTING
 static bool lockdock_preferences_use_test_store(void) {
-    const char *override_domain = getenv(lockdock_TEST_PREFERENCES_DOMAIN_ENV);
+    const char *override_domain = getenv(LOCKDOCK_TEST_PREFERENCES_DOMAIN_ENV);
 
     if (override_domain == NULL || override_domain[0] == '\0') {
         memset(&g_lockdock_test_preferences_store, 0,
@@ -222,15 +221,15 @@ bool lockdock_preferences_save_preferred_display(
         }
     }
 
-    CFPreferencesSetAppValue(lockdock_PREFERRED_UUID_KEY, uuid, domain);
-    CFPreferencesSetAppValue(lockdock_PREFERRED_BUILTIN_KEY,
+    CFPreferencesSetAppValue(LOCKDOCK_PREFERRED_UUID_KEY, uuid, domain);
+    CFPreferencesSetAppValue(LOCKDOCK_PREFERRED_BUILTIN_KEY,
                              identity->is_builtin ? kCFBooleanTrue : kCFBooleanFalse,
                              domain);
-    lockdock_preferences_set_uint32(lockdock_PREFERRED_VENDOR_KEY,
+    lockdock_preferences_set_uint32(LOCKDOCK_PREFERRED_VENDOR_KEY,
                                     identity->vendor_number);
-    lockdock_preferences_set_uint32(lockdock_PREFERRED_MODEL_KEY,
+    lockdock_preferences_set_uint32(LOCKDOCK_PREFERRED_MODEL_KEY,
                                     identity->model_number);
-    lockdock_preferences_set_uint32(lockdock_PREFERRED_SERIAL_KEY,
+    lockdock_preferences_set_uint32(LOCKDOCK_PREFERRED_SERIAL_KEY,
                                     identity->serial_number);
 
     if (uuid != NULL) {
@@ -269,7 +268,7 @@ bool lockdock_preferences_load_preferred_display(
         return false;
     }
 
-    uuid_value = CFPreferencesCopyAppValue(lockdock_PREFERRED_UUID_KEY, domain);
+    uuid_value = CFPreferencesCopyAppValue(LOCKDOCK_PREFERRED_UUID_KEY, domain);
     CFRelease(domain);
     if (uuid_value != NULL) {
         if (CFGetTypeID(uuid_value) == CFStringGetTypeID()) {
@@ -280,16 +279,16 @@ bool lockdock_preferences_load_preferred_display(
         CFRelease(uuid_value);
     }
 
-    if (lockdock_preferences_copy_bool(lockdock_PREFERRED_BUILTIN_KEY,
+    if (lockdock_preferences_copy_bool(LOCKDOCK_PREFERRED_BUILTIN_KEY,
                                        &identity_out->is_builtin)) {
         has_builtin = true;
     }
 
-    lockdock_preferences_copy_uint32(lockdock_PREFERRED_VENDOR_KEY,
+    lockdock_preferences_copy_uint32(LOCKDOCK_PREFERRED_VENDOR_KEY,
                                      &identity_out->vendor_number);
-    lockdock_preferences_copy_uint32(lockdock_PREFERRED_MODEL_KEY,
+    lockdock_preferences_copy_uint32(LOCKDOCK_PREFERRED_MODEL_KEY,
                                      &identity_out->model_number);
-    lockdock_preferences_copy_uint32(lockdock_PREFERRED_SERIAL_KEY,
+    lockdock_preferences_copy_uint32(LOCKDOCK_PREFERRED_SERIAL_KEY,
                                      &identity_out->serial_number);
 
     if (!lockdock_display_identity_is_valid(identity_out)) {
@@ -320,11 +319,11 @@ bool lockdock_preferences_clear_preferred_display(char *error, size_t error_size
         return false;
     }
 
-    CFPreferencesSetAppValue(lockdock_PREFERRED_UUID_KEY, NULL, domain);
-    CFPreferencesSetAppValue(lockdock_PREFERRED_BUILTIN_KEY, NULL, domain);
-    CFPreferencesSetAppValue(lockdock_PREFERRED_VENDOR_KEY, NULL, domain);
-    CFPreferencesSetAppValue(lockdock_PREFERRED_MODEL_KEY, NULL, domain);
-    CFPreferencesSetAppValue(lockdock_PREFERRED_SERIAL_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCK_PREFERRED_UUID_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCK_PREFERRED_BUILTIN_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCK_PREFERRED_VENDOR_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCK_PREFERRED_MODEL_KEY, NULL, domain);
+    CFPreferencesSetAppValue(LOCKDOCK_PREFERRED_SERIAL_KEY, NULL, domain);
     CFRelease(domain);
     return lockdock_preferences_sync(error, error_size);
 }

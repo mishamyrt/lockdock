@@ -62,7 +62,7 @@ $(PREFERENCES_TEST_TARGET): \
 	$(UNITY_DIR)/unity.c \
 	$(SRC_DIR)/lockdock_preferences.c \
 	$(SRC_DIR)/lockdock_display.c | $(TEST_BUILD_DIR)
-	clang $(TEST_CFLAGS) -o $@ $^ $(TEST_LDFLAGS)
+	clang $(TEST_CFLAGS) -DLOCKDOCK_TESTING -o $@ $^ $(TEST_LDFLAGS)
 
 .PHONY: test test-unit test-smoke
 

@@ -1,5 +1,5 @@
-#ifndef lockdock_PREFERENCES_H
-#define lockdock_PREFERENCES_H
+#ifndef LOCKDOCK_PREFERENCES_H
+#define LOCKDOCK_PREFERENCES_H
 
 #include "lockdock_display.h"
 

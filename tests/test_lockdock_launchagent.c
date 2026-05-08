@@ -2,6 +2,8 @@
 
 #include "test_support.h"
 
+#include "../src/lockdock_config.h"
+
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -96,7 +98,7 @@ static void test_copy_launchctl_targets_use_current_uid(void) {
 
     snprintf(expected_domain, sizeof(expected_domain), "gui/%u", (unsigned)getuid());
     snprintf(expected_service, sizeof(expected_service), "gui/%u/%s",
-             (unsigned)getuid(), LOCKDOCK_LAUNCHAGENT_LABEL);
+             (unsigned)getuid(), LOCKDOCK_BUNDLE_ID);
 
     TEST_ASSERT_EQUAL_STRING(expected_domain, domain);
     TEST_ASSERT_EQUAL_STRING(expected_service, service);

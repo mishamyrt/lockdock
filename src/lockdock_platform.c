@@ -20,16 +20,16 @@
 #include <time.h>
 #include <unistd.h>
 
-#define lockdock_MAX_DISPLAYS 32
+#define LOCKDOCK_MAX_DISPLAYS 32
 
-#define lockdock_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
-#define lockdock_DISPLAY_ID_MAX 64
-#define lockdock_DISPLAY_NAME_MAX 256
-#define lockdock_STREAM_BUF_INITIAL_CAP 4096
+#define LOCKDOCK_SYSTEM_PROFILER_CACHE_TTL_SECONDS 5
+#define LOCKDOCK_DISPLAY_ID_MAX 64
+#define LOCKDOCK_DISPLAY_NAME_MAX 256
+#define LOCKDOCK_STREAM_BUF_INITIAL_CAP 4096
 
 typedef struct {
     CGDirectDisplayID display_id;
-    char name[lockdock_DISPLAY_NAME_MAX];
+    char name[LOCKDOCK_DISPLAY_NAME_MAX];
 } LockDockDisplayNameEntry;
 
 typedef struct {
@@ -37,10 +37,10 @@ typedef struct {
     bool has_name;
     bool prefers_display_id;
     CGDirectDisplayID display_id;
-    char name[lockdock_DISPLAY_NAME_MAX];
+    char name[LOCKDOCK_DISPLAY_NAME_MAX];
 } LockDockDisplayObjectState;
 
-static LockDockDisplayNameEntry lockdock_display_name_cache[lockdock_MAX_DISPLAYS];
+static LockDockDisplayNameEntry lockdock_display_name_cache[LOCKDOCK_MAX_DISPLAYS];
 static size_t lockdock_display_name_cache_count = 0;
 static time_t lockdock_display_name_cache_last_refresh_attempt_at = 0;
 static bool lockdock_display_name_cache_needs_refresh = true;
@@ -91,7 +91,7 @@ static void lockdock_cache_display_name(LockDockDisplayNameEntry *entries,
         }
     }
 
-    if (*entry_count >= lockdock_MAX_DISPLAYS) {
+    if (*entry_count >= LOCKDOCK_MAX_DISPLAYS) {
         return;
     }
 
@@ -157,7 +157,7 @@ static bool lockdock_json_copy_number_text(const json_value_t *value,
 
 static bool lockdock_parse_display_id_json_value(const json_value_t *value,
                                                  CGDirectDisplayID *display_id_out) {
-    char text[lockdock_DISPLAY_ID_MAX];
+    char text[LOCKDOCK_DISPLAY_ID_MAX];
 
     if (value == NULL || display_id_out == NULL) {
         return false;
@@ -268,7 +268,7 @@ static bool lockdock_read_stream_to_buffer(FILE *stream,
                                            char **buffer_out,
                                            size_t *size_out) {
     char *buffer = NULL;
-    size_t capacity = lockdock_STREAM_BUF_INITIAL_CAP;
+    size_t capacity = LOCKDOCK_STREAM_BUF_INITIAL_CAP;
     size_t used = 0;
 
     if (stream == NULL || buffer_out == NULL || size_out == NULL) {
@@ -367,7 +367,7 @@ static bool lockdock_wait_for_process(pid_t pid, int *status_out) {
 static bool lockdock_refresh_display_name_cache(void) {
     const char *const argv[] = {"/usr/sbin/system_profiler", "-json",
                                 "SPDisplaysDataType", NULL};
-    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS];
+    LockDockDisplayNameEntry entries[LOCKDOCK_MAX_DISPLAYS];
     size_t entry_count = 0;
     time_t refresh_attempt_at = time(NULL);
     int pipefd[2];
@@ -471,7 +471,7 @@ bool lockdock_copy_display_name(CGDirectDisplayID display_id,
     if (lockdock_display_name_cache_needs_refresh ||
         lockdock_display_name_cache_last_refresh_attempt_at == 0 ||
         difftime(now, lockdock_display_name_cache_last_refresh_attempt_at) >=
-            lockdock_SYSTEM_PROFILER_CACHE_TTL_SECONDS) {
+            LOCKDOCK_SYSTEM_PROFILER_CACHE_TTL_SECONDS) {
         if (!lockdock_refresh_display_name_cache()) {
             return false;
         }
@@ -489,7 +489,7 @@ bool lockdock_is_accessibility_trusted(void) {
 }
 
 static CGDirectDisplayID lockdock_display_for_rect(CGRect rect) {
-    CGDirectDisplayID displays[lockdock_MAX_DISPLAYS];
+    CGDirectDisplayID displays[LOCKDOCK_MAX_DISPLAYS];
     uint32_t count = 0;
     CGDirectDisplayID best_display = 0;
     CGFloat best_area = 0;
@@ -498,7 +498,7 @@ static CGDirectDisplayID lockdock_display_for_rect(CGRect rect) {
         return 0;
     }
 
-    CGGetActiveDisplayList(lockdock_MAX_DISPLAYS, displays, &count);
+    CGGetActiveDisplayList(LOCKDOCK_MAX_DISPLAYS, displays, &count);
 
     for (uint32_t i = 0; i < count; i++) {
         CGRect bounds = CGDisplayBounds(displays[i]);
@@ -767,20 +767,20 @@ static LockDockDockOrientation lockdock_copy_dock_orientation_value(void) {
             if (CFStringCompare(orientation, CFSTR("left"), 0) ==
                 kCFCompareEqualTo) {
                 CFRelease(value);
-                return lockdock_ORIENT_LEFT;
+                return LOCKDOCK_ORIENT_LEFT;
             }
 
             if (CFStringCompare(orientation, CFSTR("right"), 0) ==
                 kCFCompareEqualTo) {
                 CFRelease(value);
-                return lockdock_ORIENT_RIGHT;
+                return LOCKDOCK_ORIENT_RIGHT;
             }
         }
 
         CFRelease(value);
     }
 
-    return lockdock_ORIENT_BOTTOM;
+    return LOCKDOCK_ORIENT_BOTTOM;
 }
 
 void lockdock_invalidate_dock_orientation_cache(void) {

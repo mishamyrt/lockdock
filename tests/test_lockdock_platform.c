@@ -94,7 +94,7 @@ static void test_parse_display_id_json_value_accepts_string_and_number_forms(voi
 }
 
 static void test_cache_display_name_updates_existing_entry(void) {
-    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS] = {0};
+    LockDockDisplayNameEntry entries[LOCKDOCK_MAX_DISPLAYS] = {0};
     size_t entry_count = 0;
 
     lockdock_cache_display_name(entries, &entry_count, 42, "First");
@@ -127,7 +127,7 @@ static void test_parse_system_profiler_stream_collects_display_names(void) {
         "    ]"
         "  }"
         "}";
-    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS] = {0};
+    LockDockDisplayNameEntry entries[LOCKDOCK_MAX_DISPLAYS] = {0};
     size_t entry_count = 0;
     FILE *stream = lockdock_test_open_stream(json_text);
     const LockDockDisplayNameEntry *entry;
@@ -152,7 +152,7 @@ static void test_parse_system_profiler_stream_collects_display_names(void) {
 }
 
 static void test_parse_system_profiler_stream_rejects_invalid_json(void) {
-    LockDockDisplayNameEntry entries[lockdock_MAX_DISPLAYS] = {0};
+    LockDockDisplayNameEntry entries[LOCKDOCK_MAX_DISPLAYS] = {0};
     size_t entry_count = 0;
     FILE *stream = lockdock_test_open_stream("{");
 

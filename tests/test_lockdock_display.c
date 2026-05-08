@@ -226,7 +226,7 @@ static void test_find_safe_edge_segment_bottom_skips_overlaps(void) {
     lockdock_test_add_display(61, CGRectMake(20, 100, 20, 30), false, 0, 0, 0, NULL);
     lockdock_test_add_display(62, CGRectMake(60, 100, 40, 30), false, 0, 0, 0, NULL);
 
-    segment = lockdock_find_safe_edge_segment(60, lockdock_ORIENT_BOTTOM);
+    segment = lockdock_find_safe_edge_segment(60, LOCKDOCK_ORIENT_BOTTOM);
     TEST_ASSERT_EQUAL_INT(0, (int)segment.start);
     TEST_ASSERT_EQUAL_INT(20, (int)segment.end);
     TEST_ASSERT_EQUAL_INT(20, (int)segment.width);
@@ -241,7 +241,7 @@ static void test_find_safe_edge_segment_left_uses_largest_gap(void) {
     lockdock_test_add_display(71, CGRectMake(150, 20, 50, 20), false, 0, 0, 0, NULL);
     lockdock_test_add_display(72, CGRectMake(150, 70, 50, 30), false, 0, 0, 0, NULL);
 
-    segment = lockdock_find_safe_edge_segment(70, lockdock_ORIENT_LEFT);
+    segment = lockdock_find_safe_edge_segment(70, LOCKDOCK_ORIENT_LEFT);
     TEST_ASSERT_EQUAL_INT(40, (int)segment.start);
     TEST_ASSERT_EQUAL_INT(70, (int)segment.end);
     TEST_ASSERT_EQUAL_INT(30, (int)segment.width);
@@ -257,7 +257,7 @@ static void test_find_safe_edge_segment_right_merges_adjacent_overlaps(void) {
     lockdock_test_add_display(82, CGRectMake(500, 25, 50, 25), false, 0, 0, 0, NULL);
     lockdock_test_add_display(83, CGRectMake(500, 80, 50, 20), false, 0, 0, 0, NULL);
 
-    segment = lockdock_find_safe_edge_segment(80, lockdock_ORIENT_RIGHT);
+    segment = lockdock_find_safe_edge_segment(80, LOCKDOCK_ORIENT_RIGHT);
     TEST_ASSERT_EQUAL_INT(50, (int)segment.start);
     TEST_ASSERT_EQUAL_INT(80, (int)segment.end);
     TEST_ASSERT_EQUAL_INT(30, (int)segment.width);
@@ -269,9 +269,9 @@ static void test_edge_point_has_contact_detects_bottom_corner_overlap(void) {
     lockdock_test_add_display(91, CGRectMake(70, 100, 30, 40), false, 0, 0, 0, NULL);
 
     TEST_ASSERT_TRUE(
-        lockdock_edge_point_has_contact(90, lockdock_ORIENT_BOTTOM, 90));
+        lockdock_edge_point_has_contact(90, LOCKDOCK_ORIENT_BOTTOM, 90));
     TEST_ASSERT_FALSE(
-        lockdock_edge_point_has_contact(90, lockdock_ORIENT_BOTTOM, 10));
+        lockdock_edge_point_has_contact(90, LOCKDOCK_ORIENT_BOTTOM, 10));
 }
 
 static void test_edge_point_has_contact_detects_side_corner_overlap(void) {
@@ -280,9 +280,9 @@ static void test_edge_point_has_contact_detects_side_corner_overlap(void) {
     lockdock_test_add_display(101, CGRectMake(150, 80, 50, 20), false, 0, 0, 0,
                               NULL);
 
-    TEST_ASSERT_TRUE(lockdock_edge_point_has_contact(100, lockdock_ORIENT_LEFT, 90));
+    TEST_ASSERT_TRUE(lockdock_edge_point_has_contact(100, LOCKDOCK_ORIENT_LEFT, 90));
     TEST_ASSERT_FALSE(
-        lockdock_edge_point_has_contact(100, lockdock_ORIENT_LEFT, 10));
+        lockdock_edge_point_has_contact(100, LOCKDOCK_ORIENT_LEFT, 10));
 }
 
 int main(void) {
