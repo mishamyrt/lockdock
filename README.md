@@ -112,8 +112,8 @@ $ lockdock lock <display-id>
 Locked Dock to display 1
 
 $ lockdock list
-0 Mi 27 NU
-1 Built-in Display [current, locked]
+0 - Mi 27 NU
+1 - Built-in Display [current, locked]
 
 $ lockdock unlock
 Unlocked Dock

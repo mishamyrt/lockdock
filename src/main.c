@@ -35,6 +35,8 @@ static int handle_disable(void) {
     return 0;
 }
 
+#define STATE_TAG(text) hue_fg(text, CYAN)
+
 static int handle_list(void) {
     LockDockIpcState state;
     char error[LOCKDOCK_IPC_MAX_ERROR];
@@ -48,13 +50,13 @@ static int handle_list(void) {
         bool is_current = (int)i == state.location_index;
         bool is_locked = state.has_target && (int)i == state.target_index;
 
-        printf("%u %s", i, state.displays[i]);
+        printf(hue_fg("%u - ", WHITE, DIM) "%s", i, state.displays[i]);
         if (is_current && is_locked) {
-            printf(" [current, locked]");
+            printf(STATE_TAG(" [current, locked]"));
         } else if (is_current) {
-            printf(" [current]");
+            printf(STATE_TAG(" [current]"));
         } else if (is_locked) {
-            printf(" [locked]");
+            printf(STATE_TAG(" [locked]"));
         }
         printf("\n");
     }
@@ -93,7 +95,7 @@ static int handle_lock(const char *index_text) {
         return 1;
     }
 
-    printf("Locked Dock to display %d\n", index);
+    printf("Locked Dock to display " hue_fg("%d", CYAN) "\n", index);
     return 0;
 }
 
