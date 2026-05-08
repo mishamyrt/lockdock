@@ -1,21 +1,16 @@
+<h1 align="center">
+    <img width="80" src="./docs/logo@2x.png" alt="Lockdock logo" /><br>
+    Lockdock <br/>
+</h1>
 <p align="center">
-    <img width="80" src="./docs/logo@2x.png" alt="Lockdock logo" />
-</p>
-
-<h1 align="center">Lockdock</h1>
-
-<p align="center">Lock the macOS Dock to a specific display</p>
-
-<p align="center">
+    Lock the macOS Dock to a specific display<br/><br/>
     <a href="https://github.com/mishamyrt/lockdock/actions/workflows/qa.yml">
         <img src="https://github.com/mishamyrt/lockdock/actions/workflows/qa.yml/badge.svg" alt="Quality Assurance badge" />
     </a>
     <a href="https://github.com/mishamyrt/lockdock/releases/latest">
         <img src="https://img.shields.io/github/v/tag/mishamyrt/lockdock?label=version" alt="Version badge" />
-    </a>
+    </a><br/><br/>
 </p>
-
-<hr />
 
 Lockdock keeps the macOS Dock on the display you choose.
 It lets you choose which display the dock should be on and prevents macOS from moving it to other displays.
@@ -105,8 +100,8 @@ Usage example:
 
 ```sh
 $ lockdock list
-0 Mi 27 NU [current]
-1 Built-in Display
+0 - Mi 27 NU [current]
+1 - Built-in Display
 
 $ lockdock lock <display-id>
 Locked Dock to display 1
