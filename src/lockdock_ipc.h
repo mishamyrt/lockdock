@@ -58,6 +58,10 @@ bool lockdock_ipc_copy_socket_path(char *buffer,
                                    size_t buffer_size,
                                    char *error,
                                    size_t error_size);
+bool lockdock_ipc_copy_pid_path(char *buffer,
+                                size_t buffer_size,
+                                char *error,
+                                size_t error_size);
 
 bool lockdock_ipc_parse_request_json(const char *request_json,
                                      LockDockIpcRequest *request_out,

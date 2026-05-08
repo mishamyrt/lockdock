@@ -357,17 +357,25 @@ static void test_serialize_response_json_escapes_strings(void) {
 static void test_socket_helpers_use_temp_home_directory(void) {
     char socket_dir[PATH_MAX];
     char socket_path[PATH_MAX];
+    char pid_path[PATH_MAX];
     char expected_path[PATH_MAX];
     char error[LOCKDOCK_IPC_REASON_SIZE];
 
     TEST_ASSERT_TRUE(lockdock_ipc_ensure_socket_dir(error, sizeof(error)));
     TEST_ASSERT_TRUE(lockdock_ipc_copy_socket_path(socket_path, sizeof(socket_path),
                                                    error, sizeof(error)));
+    TEST_ASSERT_TRUE(lockdock_ipc_copy_pid_path(pid_path, sizeof(pid_path), error,
+                                                sizeof(error)));
     TEST_ASSERT_TRUE(lockdock_test_join_path(expected_path, sizeof(expected_path),
                                              g_temp_home,
                                              "Library/Caches/co.myrt.lockdock/"
                                              "control.sock"));
     TEST_ASSERT_EQUAL_STRING(expected_path, socket_path);
+    TEST_ASSERT_TRUE(lockdock_test_join_path(expected_path, sizeof(expected_path),
+                                             g_temp_home,
+                                             "Library/Caches/co.myrt.lockdock/"
+                                             "daemon.pid"));
+    TEST_ASSERT_EQUAL_STRING(expected_path, pid_path);
     TEST_ASSERT_TRUE(lockdock_test_join_path(socket_dir, sizeof(socket_dir),
                                              g_temp_home,
                                              "Library/Caches/co.myrt.lockdock"));

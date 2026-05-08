@@ -963,6 +963,26 @@ bool lockdock_ipc_copy_socket_path(char *buffer,
     return true;
 }
 
+bool lockdock_ipc_copy_pid_path(char *buffer,
+                                size_t buffer_size,
+                                char *error,
+                                size_t error_size) {
+    char dir_path[PATH_MAX];
+
+    if (!lockdock_ipc_copy_socket_dir(dir_path, sizeof(dir_path), error,
+                                      error_size)) {
+        return false;
+    }
+
+    if (snprintf(buffer, buffer_size, "%s/daemon.pid", dir_path) >=
+        (int)buffer_size) {
+        lockdock_ipc_set_error(error, error_size, "PID file path is too long");
+        return false;
+    }
+
+    return true;
+}
+
 bool lockdock_ipc_parse_request_json(const char *request_json,
                                      LockDockIpcRequest *request_out,
                                      char *error,

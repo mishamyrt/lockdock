@@ -88,6 +88,62 @@ static void lockdock_set_error(char *buffer,
     snprintf(buffer, buffer_size, "%s", message);
 }
 
+static bool lockdock_write_pid_file(const char *pid_path,
+                                    char *error,
+                                    size_t error_size) {
+    char pid_text[32];
+    size_t written = 0;
+    int fd;
+    int pid_text_length;
+
+    if (pid_path == NULL || pid_path[0] == '\0') {
+        lockdock_set_error(error, error_size, "Internal error");
+        return false;
+    }
+
+    pid_text_length = snprintf(pid_text, sizeof(pid_text), "%ld\n", (long)getpid());
+    if (pid_text_length < 0 || pid_text_length >= (int)sizeof(pid_text)) {
+        lockdock_set_error(error, error_size, "Failed to format daemon PID");
+        return false;
+    }
+
+    fd = open(pid_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) {
+        snprintf(error, error_size, "Failed to open daemon pid file '%s': %s",
+                 pid_path, strerror(errno));
+        return false;
+    }
+
+    while (written < (size_t)pid_text_length) {
+        ssize_t nwritten =
+            write(fd, pid_text + written, (size_t)pid_text_length - written);
+
+        if (nwritten > 0) {
+            written += (size_t)nwritten;
+            continue;
+        }
+
+        if (nwritten < 0 && errno == EINTR) {
+            continue;
+        }
+
+        snprintf(error, error_size, "Failed to write daemon pid file '%s': %s",
+                 pid_path, strerror(nwritten < 0 ? errno : EIO));
+        close(fd);
+        unlink(pid_path);
+        return false;
+    }
+
+    if (close(fd) != 0) {
+        snprintf(error, error_size, "Failed to finalize daemon pid file '%s': %s",
+                 pid_path, strerror(errno));
+        unlink(pid_path);
+        return false;
+    }
+
+    return true;
+}
+
 static void lockdock_result_response(bool success,
                                      const char *reason,
                                      char *buffer,
@@ -792,9 +848,12 @@ static void lockdock_reconcile_pending_display_state(char *error,
 }
 
 int lockdock_run_daemon(void) {
-    char socket_path[PATH_MAX];
+    char socket_path[PATH_MAX] = {0};
+    char pid_path[PATH_MAX] = {0};
     char error[LOCKDOCK_ERROR_BUFFER_SIZE];
     int listen_fd = -1;
+    bool display_callback_registered = false;
+    int exit_code = 1;
 
     signal(SIGINT, lockdock_signal_handler);
     signal(SIGTERM, lockdock_signal_handler);
@@ -802,27 +861,31 @@ int lockdock_run_daemon(void) {
 
     if (!lockdock_open_wakeup_pipe(error, sizeof(error))) {
         fprintf(stderr, "%s\n", error);
-        return 1;
+        goto cleanup;
     }
 
     listen_fd = lockdock_open_server_socket(socket_path, sizeof(socket_path), error,
                                             sizeof(error));
     if (listen_fd < 0) {
         fprintf(stderr, "%s\n", error);
-        lockdock_close_wakeup_pipe();
-        return 1;
+        goto cleanup;
     }
 
     if (!lockdock_register_display_callback(error, sizeof(error))) {
         fprintf(stderr, "%s\n", error);
-        close(listen_fd);
-        lockdock_close_wakeup_pipe();
-        unlink(socket_path);
-        return 1;
+        goto cleanup;
     }
+    display_callback_registered = true;
 
     if (!lockdock_reconcile_display_state(error, sizeof(error))) {
         fprintf(stderr, "Display reconcile failed: %s\n", error);
+    }
+
+    if (!lockdock_ipc_copy_pid_path(pid_path, sizeof(pid_path), error,
+                                    sizeof(error)) ||
+        !lockdock_write_pid_file(pid_path, error, sizeof(error))) {
+        fprintf(stderr, "%s\n", error);
+        goto cleanup;
     }
 
     printf("lockdock daemon listening on %s\n", socket_path);
@@ -896,12 +959,22 @@ int lockdock_run_daemon(void) {
         lockdock_reconcile_pending_display_state(error, sizeof(error));
     }
 
-    lockdock_remove_display_callback();
+    exit_code = 0;
+
+cleanup:
+    if (display_callback_registered) {
+        lockdock_remove_display_callback();
+    }
     lockdock_locker_shutdown();
     lockdock_close_wakeup_pipe();
     if (listen_fd >= 0) {
         close(listen_fd);
     }
-    unlink(socket_path);
-    return 0;
+    if (socket_path[0] != '\0') {
+        unlink(socket_path);
+    }
+    if (pid_path[0] != '\0') {
+        unlink(pid_path);
+    }
+    return exit_code;
 }
