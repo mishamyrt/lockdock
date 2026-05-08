@@ -187,6 +187,18 @@ jobs:
                       bin.install "lockdock"
                     end
 
+                    def post_install
+                      pid_path = File.expand_path("~/Library/Caches/co.myrt.lockdock/daemon.pid")
+                      return unless File.exist?(pid_path)
+
+                      pid_text = File.read(pid_path).strip
+                      return unless pid_text.match?(/\A\d+\z/)
+
+                      Process.kill("TERM", pid_text.to_i)
+                    rescue Errno::ENOENT, Errno::ESRCH
+                      nil
+                    end
+
                     test do
                       assert_match version.to_s, shell_output("#{bin}/lockdock version")
                     end
