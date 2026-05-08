@@ -8,18 +8,14 @@ If you have multiple monitors, macOS can move the Dock between them uncontrollab
 
 ## Features
 
-- very high efficiency. The daemon consumes a maximum of 10 megabytes of RAM and very little CPU.
-- displays a list of active displays and the current Dock position;
-- pins the Dock to a selected display;
-- runs in the background via a user `LaunchAgent`;
-- automatically returns the Dock to the same physical monitor after it is reconnected.
-
-## Requirements
-
-- macOS;
-- `Accessibility` access for `lockdock`, otherwise the daemon won't be able to detect and move the Dock.
+- Pins the Dock to the selected display;
+- Moves the Dock between displays;
+- Runs in the background as a daemon;
+- Uses **very** few resources. The daemon is written in C and consumes no more than 10 megabytes of RAM.
 
 ## Installation
+
+> ☝️ The daemon requires Accessibility permission to manage the Dock's position.
 
 ### From brew
 
@@ -27,6 +23,8 @@ If you have multiple monitors, macOS can move the Dock between them uncontrollab
 brew install mishamyrt/tap/lockdock
 lockdock enable # enable background daemon
 ```
+
+The `lockdock enable` command creates `~/Library/LaunchAgents/co.myrt.lockdock.plist` and starts the daemon in the background.
 
 ### From sources
 
@@ -40,9 +38,6 @@ lockdock enable # enable background daemon
 
 By default, the binaries are installed in `~/.local/bin`. If `lockdock` isn't found, add this directory to your `PATH`.
 
-The `lockdock enable` command creates `~/Library/LaunchAgents/co.myrt.lockdock.plist` and starts the daemon in the background.
-If macOS asks for `Accessibility` access, grant it to `lockdock`.
-
 ## Usage
 
 ### Raycast
@@ -51,7 +46,7 @@ The most convenient way to use `lockdock` is through the [Raycast extension](htt
 
 ### CLI
 
-Basic commands:
+Control commands:
 
 ```sh
 lockdock list
@@ -82,7 +77,7 @@ Unlocked Dock
 
 ## Additional Information
 
-The IPC protocol between the CLI and the daemon is described in [docs/ipc.md](docs/ipc.md).
+The daemon IPC protocol is described in [docs/ipc.md](docs/ipc.md).
 
 ## License
 
