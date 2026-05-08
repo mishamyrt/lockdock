@@ -26,6 +26,12 @@ lockdock enable # enable background daemon
 
 The `lockdock enable` command creates `~/Library/LaunchAgents/co.myrt.lockdock.plist` and starts the daemon in the background.
 
+### From GitHub Releases
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mishamyrt/lockdock/main/install.sh | sh
+```
+
 ### From sources
 
 Clone the repository, open it in your terminal, and run the following commands:
@@ -36,7 +42,7 @@ make install
 lockdock enable # enable background daemon
 ```
 
-By default, the binaries are installed in `~/.local/bin`. If `lockdock` isn't found, add this directory to your `PATH`.
+By default, the binary is installed in `~/.local/bin`. If `lockdock` isn't found, add this directory to your `PATH`.
 
 ## Usage
 
