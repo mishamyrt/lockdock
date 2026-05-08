@@ -3,7 +3,7 @@ VERSION = 0.2.0
 SRC_DIR = src
 BUILD_DIR = build
 ARTIFACTS_DIR = $(BUILD_DIR)/artifacts
-INSTALL_DIR = ${HOME}/.local/bin
+PREFIX = ${HOME}/.local/bin
 THIRDPARTY_DIR = thirdparty
 TARGET = $(BUILD_DIR)/lockdock
 
@@ -59,8 +59,8 @@ tidy:
 	$(CLANG_TIDY) -quiet $(SRCS) -- $(CFLAGS)
 
 install: $(TARGET)
-	mkdir -p $(INSTALL_DIR)
-	cp $^ $(INSTALL_DIR)
+	mkdir -p $(PREFIX)
+	cp $^ $(PREFIX)
 
 publish:
 	git add Makefile
