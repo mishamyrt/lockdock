@@ -16,7 +16,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define LOCKDOCK_LAUNCHAGENT_LABEL LOCKDOCK_IPC_BUNDLE_ID
+#define LOCKDOCK_HOMEBREW_FORMULA_NAME "lockdock"
+#define LOCKDOCK_HOMEBREW_CELLAR_SEGMENT \
+    "/Cellar/" LOCKDOCK_HOMEBREW_FORMULA_NAME "/"
+#define LOCKDOCK_EXECUTABLE_SUFFIX "/bin/lockdock"
 
 enum {
     LOCKDOCK_LAUNCHAGENT_PERMISSION_DIR = 0755,
@@ -120,6 +123,50 @@ static void lockdock_trim_trailing_whitespace(char *text) {
                           text[length - 1] == ' ' || text[length - 1] == '\t')) {
         text[--length] = '\0';
     }
+}
+
+static bool lockdock_string_ends_with(const char *text, const char *suffix) {
+    size_t text_length;
+    size_t suffix_length;
+
+    if (text == NULL || suffix == NULL) {
+        return false;
+    }
+
+    text_length = strlen(text);
+    suffix_length = strlen(suffix);
+    if (suffix_length > text_length) {
+        return false;
+    }
+
+    return strcmp(text + text_length - suffix_length, suffix) == 0;
+}
+
+static bool lockdock_try_copy_homebrew_prefix_from_executable_path(
+    const char *executable_path,
+    char *buffer,
+    size_t buffer_size) {
+    const char *segment;
+    size_t prefix_length;
+
+    if (executable_path == NULL || buffer == NULL || buffer_size == 0 ||
+        !lockdock_string_ends_with(executable_path, LOCKDOCK_EXECUTABLE_SUFFIX)) {
+        return false;
+    }
+
+    segment = strstr(executable_path, LOCKDOCK_HOMEBREW_CELLAR_SEGMENT);
+    if (segment == NULL || segment == executable_path) {
+        return false;
+    }
+
+    prefix_length = (size_t)(segment - executable_path);
+    if (prefix_length >= buffer_size) {
+        return false;
+    }
+
+    memcpy(buffer, executable_path, prefix_length);
+    buffer[prefix_length] = '\0';
+    return true;
 }
 
 static const char *lockdock_home_dir(void) {
@@ -263,6 +310,27 @@ static bool lockdock_copy_program_path(char *buffer,
     }
 
     return true;
+}
+
+static bool lockdock_try_copy_homebrew_brew_path(char *buffer, size_t buffer_size) {
+    char executable_path[PATH_MAX];
+    char prefix[PATH_MAX];
+    char error[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
+
+    if (!lockdock_copy_executable_path(executable_path, sizeof(executable_path),
+                                       error, sizeof(error)) ||
+        !lockdock_try_copy_homebrew_prefix_from_executable_path(
+            executable_path, prefix, sizeof(prefix))) {
+        return false;
+    }
+
+    return snprintf(buffer, buffer_size, "%s/bin/brew", prefix) < (int)buffer_size;
+}
+
+static bool lockdock_is_homebrew_install(void) {
+    char brew_path[PATH_MAX];
+
+    return lockdock_try_copy_homebrew_brew_path(brew_path, sizeof(brew_path));
 }
 
 static bool lockdock_copy_domain_target(char *buffer,
@@ -606,7 +674,57 @@ static bool lockdock_launchctl_best_effort(const char *const *argv,
     return true;
 }
 
-bool lockdock_launchagent_enable(char *message, size_t message_size) {
+static bool lockdock_homebrew_service(const char *subcommand,
+                                      char *message,
+                                      size_t message_size) {
+    char brew_path[PATH_MAX];
+    char output[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
+    char error[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
+    int exit_status = 0;
+    const char *argv[] = {brew_path, "services", subcommand,
+                          LOCKDOCK_HOMEBREW_FORMULA_NAME, NULL};
+
+    if (!lockdock_try_copy_homebrew_brew_path(brew_path, sizeof(brew_path))) {
+        lockdock_set_message(message, message_size,
+                             "Current installation is not managed by Homebrew");
+        return false;
+    }
+
+    if (!lockdock_run_command(argv, &exit_status, output, sizeof(output), error,
+                              sizeof(error))) {
+        lockdock_set_message(message, message_size, error);
+        return false;
+    }
+
+    if (exit_status != 0) {
+        if (output[0] != '\0') {
+            snprintf(message, message_size, "brew services %s failed: %s",
+                     subcommand, output);
+        } else {
+            snprintf(message, message_size,
+                     "brew services %s failed with exit status %d", subcommand,
+                     exit_status);
+        }
+        return false;
+    }
+
+    if (strcmp(subcommand, "start") == 0) {
+        snprintf(message, message_size, "Enabled Homebrew service for %s",
+                 LOCKDOCK_HOMEBREW_FORMULA_NAME);
+    } else if (strcmp(subcommand, "stop") == 0) {
+        snprintf(message, message_size, "Disabled Homebrew service for %s",
+                 LOCKDOCK_HOMEBREW_FORMULA_NAME);
+    } else if (output[0] != '\0') {
+        snprintf(message, message_size, "%s", output);
+    } else {
+        snprintf(message, message_size, "brew services %s %s succeeded", subcommand,
+                 LOCKDOCK_HOMEBREW_FORMULA_NAME);
+    }
+
+    return true;
+}
+
+static bool lockdock_launchagent_enable_manual(char *message, size_t message_size) {
     char program_path[PATH_MAX];
     char directory[PATH_MAX];
     char plist_path[PATH_MAX];
@@ -653,7 +771,9 @@ bool lockdock_launchagent_enable(char *message, size_t message_size) {
     return true;
 }
 
-bool lockdock_launchagent_disable(char *message, size_t message_size) {
+static bool lockdock_launchagent_disable_manual(char *message,
+                                                size_t message_size,
+                                                bool strict) {
     char plist_path[PATH_MAX];
     char service_target[LOCKDOCK_LAUNCHAGENT_SERVICE_TARGET_MAX];
     char error[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
@@ -668,9 +788,18 @@ bool lockdock_launchagent_disable(char *message, size_t message_size) {
         return false;
     }
 
-    if (!lockdock_launchctl(error, sizeof(error), "launchctl disable",
-                            disable_argv) ||
-        !lockdock_launchctl_best_effort(bootout_argv, error, sizeof(error))) {
+    if (strict) {
+        if (!lockdock_launchctl(error, sizeof(error), "launchctl disable",
+                                disable_argv)) {
+            lockdock_set_message(message, message_size, error);
+            return false;
+        }
+    } else if (!lockdock_launchctl_best_effort(disable_argv, error, sizeof(error))) {
+        lockdock_set_message(message, message_size, error);
+        return false;
+    }
+
+    if (!lockdock_launchctl_best_effort(bootout_argv, error, sizeof(error))) {
         lockdock_set_message(message, message_size, error);
         return false;
     }
@@ -684,5 +813,33 @@ bool lockdock_launchagent_disable(char *message, size_t message_size) {
 
     snprintf(message, message_size, "Disabled LaunchAgent and removed %s",
              plist_path);
+    return true;
+}
+
+bool lockdock_launchagent_enable(char *message, size_t message_size) {
+    char ignored_message[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
+
+    if (!lockdock_is_homebrew_install()) {
+        return lockdock_launchagent_enable_manual(message, message_size);
+    }
+
+    lockdock_launchagent_disable_manual(ignored_message, sizeof(ignored_message),
+                                        false);
+    return lockdock_homebrew_service("start", message, message_size);
+}
+
+bool lockdock_launchagent_disable(char *message, size_t message_size) {
+    char ignored_message[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
+
+    if (!lockdock_is_homebrew_install()) {
+        return lockdock_launchagent_disable_manual(message, message_size, true);
+    }
+
+    if (!lockdock_homebrew_service("stop", message, message_size)) {
+        return false;
+    }
+
+    lockdock_launchagent_disable_manual(ignored_message, sizeof(ignored_message),
+                                        false);
     return true;
 }

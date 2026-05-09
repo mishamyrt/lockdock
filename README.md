@@ -38,10 +38,22 @@ Make sure you grant this permission, as the app won't work without it.
 
 ```sh
 brew install mishamyrt/tap/lockdock
-lockdock enable # enable background daemon
+lockdock enable # or: brew services start lockdock
 ```
 
-The `lockdock enable` command creates `~/Library/LaunchAgents/co.myrt.lockdock.plist` and starts the daemon in the background.
+When Lockdock is installed from Homebrew, `lockdock enable` delegates to
+`brew services start lockdock`, and `lockdock disable` delegates to
+`brew services stop lockdock`.
+
+Before uninstalling the formula, stop the service first:
+
+```sh
+lockdock disable # or: brew services stop lockdock
+brew uninstall lockdock
+```
+
+If the formula was removed without stopping the service first, run
+`brew services cleanup` to remove orphaned service files.
 
 ### Script
 
@@ -91,8 +103,8 @@ The extension uses the installed `lockdock` IPC, so install and enable Lockdock 
 | `lockdock list`         | Show connected displays and current Dock display     |
 | `lockdock lock <index>` | Pin the Dock to display `<index>`                    |
 | `lockdock unlock`       | Stop pinning the Dock, but keep the daemon available |
-| `lockdock enable`       | Install and start the LaunchAgent                    |
-| `lockdock disable`      | Stop and remove the LaunchAgent                      |
+| `lockdock enable`       | Enable the background service                        |
+| `lockdock disable`      | Disable the background service                       |
 
 `lockdock help` shows the full list of commands.
 

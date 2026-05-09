@@ -111,6 +111,26 @@ static void test_trim_trailing_whitespace_removes_line_endings_and_tabs(void) {
     TEST_ASSERT_EQUAL_STRING("hello", text);
 }
 
+static void test_try_copy_homebrew_prefix_from_executable_path_parses_cellar_layout(
+    void) {
+    char prefix[PATH_MAX];
+
+    TEST_ASSERT_TRUE(lockdock_try_copy_homebrew_prefix_from_executable_path(
+        "/opt/homebrew/Cellar/lockdock/0.3.0/bin/lockdock", prefix, sizeof(prefix)));
+    TEST_ASSERT_EQUAL_STRING("/opt/homebrew", prefix);
+}
+
+static void
+test_try_copy_homebrew_prefix_from_executable_path_rejects_non_homebrew_paths(void) {
+    char prefix[PATH_MAX];
+
+    TEST_ASSERT_FALSE(lockdock_try_copy_homebrew_prefix_from_executable_path(
+        "/Users/test/.local/bin/lockdock", prefix, sizeof(prefix)));
+    TEST_ASSERT_FALSE(lockdock_try_copy_homebrew_prefix_from_executable_path(
+        "/opt/homebrew/Cellar/lockdock/0.3.0/bin/not-lockdock", prefix,
+        sizeof(prefix)));
+}
+
 static void test_run_command_captures_trimmed_output(void) {
     const char *const argv[] = {"/usr/bin/printf", "hello\n\t ", NULL};
     char output[LOCKDOCK_LAUNCHAGENT_MESSAGE_SIZE];
@@ -162,6 +182,10 @@ int main(void) {
     RUN_TEST(test_mkdir_p_creates_nested_directories);
     RUN_TEST(test_copy_launchctl_targets_use_current_uid);
     RUN_TEST(test_trim_trailing_whitespace_removes_line_endings_and_tabs);
+    RUN_TEST(
+        test_try_copy_homebrew_prefix_from_executable_path_parses_cellar_layout);
+    RUN_TEST(
+        test_try_copy_homebrew_prefix_from_executable_path_rejects_non_homebrew_paths);
     RUN_TEST(test_run_command_captures_trimmed_output);
     RUN_TEST(test_run_command_returns_exec_failure_status);
     RUN_TEST(test_write_plist_writes_complete_file);

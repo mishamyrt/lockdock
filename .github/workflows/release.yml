@@ -187,16 +187,23 @@ jobs:
                       bin.install "lockdock"
                     end
 
-                    def post_install
-                      pid_path = File.expand_path("~/Library/Caches/co.myrt.lockdock/daemon.pid")
-                      return unless File.exist?(pid_path)
+                    service do
+                      run [opt_bin/"lockdock", "run"]
+                      keep_alive true
+                      process_type :interactive
+                      log_path "/dev/null"
+                      error_log_path "/dev/null"
+                    end
 
-                      pid_text = File.read(pid_path).strip
-                      return unless pid_text.match?(/\A\d+\z/)
+                    def caveats
+                      <<~EOS
+                        Use `brew services start lockdock` or `lockdock enable` to launch Lockdock at login.
 
-                      Process.kill("TERM", pid_text.to_i)
-                    rescue Errno::ENOENT, Errno::ESRCH
-                      nil
+                        Stop the service before uninstalling:
+                          brew services stop lockdock
+                        If the formula was already removed, run:
+                          brew services cleanup
+                      EOS
                     end
 
                     test do

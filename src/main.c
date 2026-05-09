@@ -122,8 +122,8 @@ static void print_usage(const char *prog) {
     printf(HEADER("Usage: ") COMMAND("%s") " [COMMAND]\n\n", prog);
     printf(HEADER("Commands:\n"));
     printf(COMMAND_P("run") "           Run daemon in foreground\n");
-    printf(COMMAND_P("enable") "        Install and start the LaunchAgent\n");
-    printf(COMMAND_P("disable") "       Stop and remove the LaunchAgent\n");
+    printf(COMMAND_P("enable") "        Enable the background service\n");
+    printf(COMMAND_P("disable") "       Disable the background service\n");
     printf(COMMAND_P("list") "          List displays and Dock state\n");
     printf(COMMAND_P("lock") " <index>  Lock the Dock to the display index\n");
     printf(COMMAND_P("unlock") "        Unlock the Dock\n");
