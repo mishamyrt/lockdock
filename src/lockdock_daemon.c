@@ -19,11 +19,17 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t g_daemon_running = 1;
 static _Atomic bool g_display_state_dirty = false;
 static int g_daemon_wakeup_pipe[2] = {-1, -1};
+
+static const useconds_t LOCKDOCK_DISPLAY_RECONFIGURATION_SETTLE_DELAY_US = 1500000;
+static const int LOCKDOCK_DISPLAY_RELOCATION_RETRY_ATTEMPTS = 5;
+static const useconds_t LOCKDOCK_DISPLAY_RELOCATION_RETRY_DELAY_US = 1000000;
+static const time_t LOCKDOCK_DISPLAY_POLL_INTERVAL_SECONDS = 2;
 
 typedef struct {
     CGDirectDisplayID dock_display;
@@ -68,8 +74,9 @@ static void lockdock_display_reconfiguration_callback(
     CGDirectDisplayID display_id,
     CGDisplayChangeSummaryFlags flags,
     void *user_info) {
-    (void)display_id;
     (void)user_info;
+
+    fprintf(stderr, "Display callback: display=%u flags=0x%x\n", display_id, flags);
 
     if ((flags & kCGDisplayBeginConfigurationFlag) != 0) {
         return;
@@ -234,42 +241,128 @@ static bool lockdock_resolve_target_display(const LockDockStatus *status,
     return true;
 }
 
-static bool lockdock_reconcile_display_state(char *error, size_t error_size) {
-    LockDockDisplayIdentity preferred_identity;
-    CGDirectDisplayID locked_display = lockdock_locker_get_target();
-    CGDirectDisplayID preferred_display = 0;
+static bool lockdock_copy_status_dock_display(CGDirectDisplayID *display_id_out,
+                                              char *error,
+                                              size_t error_size) {
     LockDockStatus status;
 
-    if (locked_display != 0 && lockdock_find_display_index(locked_display) < 0) {
-        lockdock_locker_clear_target();
-        locked_display = 0;
-    }
-
-    if (!lockdock_preferences_load_preferred_display(&preferred_identity)) {
-        return true;
-    }
-
-    if (locked_display != 0) {
-        return true;
-    }
-
-    if (!lockdock_find_active_display_by_identity(&preferred_identity,
-                                                  &preferred_display)) {
-        return true;
+    if (display_id_out == NULL) {
+        lockdock_set_error(error, error_size, "Internal error");
+        return false;
     }
 
     if (!lockdock_query_status(&status, error, error_size)) {
         return false;
     }
 
-    if (status.displays[status.location_index] == preferred_display) {
-        return lockdock_locker_set_target(preferred_display, error, error_size);
+    *display_id_out = status.displays[status.location_index];
+    fprintf(stderr, "Status: dock_display=%u display_count=%u location_index=%d\n",
+            *display_id_out, status.display_count, status.location_index);
+    return true;
+}
+
+static bool lockdock_relocate_display_until_current(CGDirectDisplayID display_id,
+                                                    char *error,
+                                                    size_t error_size) {
+    CGDirectDisplayID dock_display = 0;
+
+    for (int attempt = 0; attempt < LOCKDOCK_DISPLAY_RELOCATION_RETRY_ATTEMPTS;
+         attempt++) {
+        fprintf(stderr, "Relocate attempt %d/%d: target_display=%u\n", attempt + 1,
+                LOCKDOCK_DISPLAY_RELOCATION_RETRY_ATTEMPTS, display_id);
+
+        if (!lockdock_relocate_display(display_id, error, error_size)) {
+            fprintf(stderr, "Relocate attempt failed: target_display=%u error=%s\n",
+                    display_id, error);
+            return false;
+        }
+
+        usleep(LOCKDOCK_DISPLAY_RELOCATION_RETRY_DELAY_US);
+
+        if (!lockdock_copy_status_dock_display(&dock_display, error, error_size)) {
+            fprintf(stderr,
+                    "Relocate verification failed: target_display=%u error=%s\n",
+                    display_id, error);
+            return false;
+        }
+
+        if (dock_display == display_id) {
+            fprintf(stderr, "Relocate verified: dock_display=%u\n", dock_display);
+            return true;
+        }
+
+        fprintf(stderr,
+                "Relocate not verified: dock_display=%u expected=%u; retrying\n",
+                dock_display, display_id);
     }
 
-    if (!lockdock_relocate_display(preferred_display, error, error_size)) {
+    snprintf(error, error_size, "Dock is on display %u (expected %u)", dock_display,
+             display_id);
+    return false;
+}
+
+static bool lockdock_reconcile_display_state(char *error, size_t error_size) {
+    LockDockDisplayIdentity preferred_identity;
+    CGDirectDisplayID locked_display = lockdock_locker_get_target();
+    CGDirectDisplayID preferred_display = 0;
+    LockDockStatus status;
+
+    fprintf(stderr, "Display reconcile: locked_display=%u\n", locked_display);
+
+    if (locked_display != 0 && lockdock_find_display_index(locked_display) < 0) {
+        fprintf(stderr,
+                "Display reconcile: locked display %u is inactive; clearing lock\n",
+                locked_display);
+        lockdock_locker_clear_target();
+        locked_display = 0;
+    }
+
+    if (locked_display != 0) {
+        if (!lockdock_query_status(&status, error, error_size)) {
+            fprintf(stderr, "Display reconcile: status failed: %s\n", error);
+            return false;
+        }
+
+        fprintf(stderr,
+                "Display reconcile: active lock=%u dock_display=%u display_count=%u "
+                "location_index=%d\n",
+                locked_display, status.displays[status.location_index],
+                status.display_count, status.location_index);
+
+        if (status.displays[status.location_index] == locked_display) {
+            fprintf(stderr,
+                    "Display reconcile: Dock already matches locked display %u\n",
+                    locked_display);
+            return true;
+        }
+
+        return lockdock_relocate_display_until_current(locked_display, error,
+                                                       error_size);
+    }
+
+    if (!lockdock_preferences_load_preferred_display(&preferred_identity)) {
+        fprintf(stderr, "Display reconcile: no preferred display saved\n");
+        return true;
+    }
+
+    if (!lockdock_find_active_display_by_identity(&preferred_identity,
+                                                  &preferred_display)) {
+        fprintf(stderr, "Display reconcile: preferred display is not active yet\n");
+        return true;
+    }
+
+    fprintf(stderr,
+            "Display reconcile: restoring preferred display %u as lock target\n",
+            preferred_display);
+
+    /* During display reconfiguration Dock window probing can be stale. */
+    if (!lockdock_relocate_display_until_current(preferred_display, error,
+                                                 error_size)) {
         return false;
     }
 
+    fprintf(stderr, "Display reconcile: setting lock target to %u\n",
+            preferred_display);
     return lockdock_locker_set_target(preferred_display, error, error_size);
 }
 
@@ -842,8 +935,19 @@ static void lockdock_reconcile_pending_display_state(char *error,
         return;
     }
 
+    fprintf(stderr, "Display reconcile pending: waiting %.2fs for reconfiguration\n",
+            (double)LOCKDOCK_DISPLAY_RECONFIGURATION_SETTLE_DELAY_US / 1000000.0);
+    usleep(LOCKDOCK_DISPLAY_RECONFIGURATION_SETTLE_DELAY_US);
+
     if (!lockdock_reconcile_display_state(error, error_size)) {
         fprintf(stderr, "Display reconcile failed: %s\n", error);
+    }
+}
+
+static void lockdock_poll_display_state(char *error, size_t error_size) {
+    fprintf(stderr, "Display poll: checking display state\n");
+    if (!lockdock_reconcile_display_state(error, error_size)) {
+        fprintf(stderr, "Display poll reconcile failed: %s\n", error);
     }
 }
 
@@ -892,6 +996,7 @@ int lockdock_run_daemon(void) {
 
     while (g_daemon_running) {
         fd_set read_fds;
+        struct timeval timeout;
         int select_result;
         int max_fd = listen_fd;
 
@@ -902,8 +1007,10 @@ int lockdock_run_daemon(void) {
         FD_ZERO(&read_fds);
         FD_SET(listen_fd, &read_fds);
         FD_SET(g_daemon_wakeup_pipe[0], &read_fds);
+        timeout.tv_sec = LOCKDOCK_DISPLAY_POLL_INTERVAL_SECONDS;
+        timeout.tv_usec = 0;
 
-        select_result = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
+        select_result = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
         if (select_result < 0) {
             if (errno == EINTR) {
                 continue;
@@ -911,6 +1018,11 @@ int lockdock_run_daemon(void) {
 
             fprintf(stderr, "Daemon select failed: %s\n", strerror(errno));
             break;
+        }
+
+        if (select_result == 0) {
+            lockdock_poll_display_state(error, sizeof(error));
+            continue;
         }
 
         if (FD_ISSET(g_daemon_wakeup_pipe[0], &read_fds)) {
