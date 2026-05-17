@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2](https://github.com/mishamyrt/lockdock/compare/v0.4.1..v0.4.2) - 2026-05-17
+
+### 🚀 Features
+
+- Minimize logging
+- Remove non working callback
+
+### ⚡ Performance
+
+- Reduce hot path cpu and memory pressure
+
 ## [0.4.1](https://github.com/mishamyrt/lockdock/compare/v0.4.0..v0.4.1) - 2026-05-13
 
 ### 🐛 Bug Fixes
