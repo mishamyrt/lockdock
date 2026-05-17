@@ -1,4 +1,4 @@
-#include "lockdock_config.h"
+#include "lockdock_config.h" // NOLINT misc-include-cleaner
 #include "lockdock_daemon.h"
 #include "lockdock_ipc.h"
 #include "lockdock_launchagent.h"
