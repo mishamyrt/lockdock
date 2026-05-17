@@ -307,8 +307,6 @@ static bool lockdock_reconcile_display_state(char *error, size_t error_size) {
     CGDirectDisplayID preferred_display = 0;
     LockDockStatus status;
 
-    fprintf(stderr, "Display reconcile: locked_display=%u\n", locked_display);
-
     if (locked_display != 0 && lockdock_find_display_index(locked_display) < 0) {
         fprintf(stderr,
                 "Display reconcile: locked display %u is inactive; clearing lock\n",
@@ -323,16 +321,7 @@ static bool lockdock_reconcile_display_state(char *error, size_t error_size) {
             return false;
         }
 
-        fprintf(stderr,
-                "Display reconcile: active lock=%u dock_display=%u display_count=%u "
-                "location_index=%d\n",
-                locked_display, status.displays[status.location_index],
-                status.display_count, status.location_index);
-
         if (status.displays[status.location_index] == locked_display) {
-            fprintf(stderr,
-                    "Display reconcile: Dock already matches locked display %u\n",
-                    locked_display);
             return true;
         }
 
@@ -341,13 +330,13 @@ static bool lockdock_reconcile_display_state(char *error, size_t error_size) {
     }
 
     if (!lockdock_preferences_load_preferred_display(&preferred_identity)) {
-        fprintf(stderr, "Display reconcile: no preferred display saved\n");
+        // no preferred display saved
         return true;
     }
 
     if (!lockdock_find_active_display_by_identity(&preferred_identity,
                                                   &preferred_display)) {
-        fprintf(stderr, "Display reconcile: preferred display is not active yet\n");
+        // preferred display is not active yet
         return true;
     }
 
@@ -355,7 +344,7 @@ static bool lockdock_reconcile_display_state(char *error, size_t error_size) {
             "Display reconcile: restoring preferred display %u as lock target\n",
             preferred_display);
 
-    /* During display reconfiguration Dock window probing can be stale. */
+    // During display reconfiguration Dock window probing can be stale.
     if (!lockdock_relocate_display_until_current(preferred_display, error,
                                                  error_size)) {
         return false;
@@ -1025,7 +1014,9 @@ int lockdock_run_daemon(void) {
         }
 
         if (select_result == 0) {
-            lockdock_poll_display_state(error, sizeof(error));
+            if (!lockdock_reconcile_display_state(error, sizeof(error))) {
+                fprintf(stderr, "Display reconcile failed: %s\n", error);
+            }
             continue;
         }
 
