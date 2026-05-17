@@ -15,8 +15,16 @@
 
 #define LOCKDOCK_LOCKER_ERROR_BUFFER_SIZE 256
 
+typedef struct {
+    CGDirectDisplayID display_id;
+    CGRect bounds;
+} LockDockCachedDisplay;
+
 static _Atomic uint32_t g_locked_display = 0;
 static double g_lock_edge_zone = 4.0;
+static pthread_mutex_t g_display_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static LockDockCachedDisplay g_display_cache[LOCKDOCK_MAX_DISPLAYS];
+static uint32_t g_display_cache_count = 0;
 static CFMachPortRef g_event_tap = NULL;
 static CFRunLoopSourceRef g_event_source = NULL;
 static CFRunLoopRef g_event_run_loop = NULL;
@@ -32,6 +40,53 @@ static void lockdock_locker_enable_tap(void) {
     if (g_event_tap != NULL) {
         CGEventTapEnable(g_event_tap, true);
     }
+}
+
+void lockdock_locker_refresh_display_cache(void) {
+    CGDirectDisplayID displays[LOCKDOCK_MAX_DISPLAYS];
+    LockDockCachedDisplay cache[LOCKDOCK_MAX_DISPLAYS];
+    uint32_t count;
+
+    count = lockdock_get_active_displays(displays, LOCKDOCK_MAX_DISPLAYS);
+    for (uint32_t i = 0; i < count; i++) {
+        cache[i].display_id = displays[i];
+        cache[i].bounds = CGDisplayBounds(displays[i]);
+    }
+
+    pthread_mutex_lock(&g_display_cache_mutex);
+    memcpy(g_display_cache, cache, sizeof(cache[0]) * count);
+    g_display_cache_count = count;
+    pthread_mutex_unlock(&g_display_cache_mutex);
+}
+
+static bool lockdock_locker_copy_display_at_point(CGPoint point,
+                                                  CGDirectDisplayID *display_id_out,
+                                                  CGRect *bounds_out) {
+    bool found = false;
+
+    if (display_id_out == NULL || bounds_out == NULL) {
+        return false;
+    }
+
+    pthread_mutex_lock(&g_display_cache_mutex);
+    for (uint32_t i = 0; i < g_display_cache_count; i++) {
+        CGRect bounds = g_display_cache[i].bounds;
+
+        if (point.x < bounds.origin.x ||
+            point.x >= bounds.origin.x + bounds.size.width ||
+            point.y < bounds.origin.y ||
+            point.y >= bounds.origin.y + bounds.size.height) {
+            continue;
+        }
+
+        *display_id_out = g_display_cache[i].display_id;
+        *bounds_out = bounds;
+        found = true;
+        break;
+    }
+    pthread_mutex_unlock(&g_display_cache_mutex);
+
+    return found;
 }
 
 static CGFloat lockdock_distance_from_dock_edge(
@@ -80,12 +135,11 @@ static CGEventRef lockdock_locker_event_callback(CGEventTapProxy proxy,
     }
 
     point = CGEventGetLocation(event);
-    current_display = lockdock_find_display_at_point(point);
-    if (current_display == 0 || current_display == locked_display) {
+    if (!lockdock_locker_copy_display_at_point(point, &current_display, &bounds) ||
+        current_display == locked_display) {
         return event;
     }
 
-    bounds = CGDisplayBounds(current_display);
     orientation = lockdock_get_dock_orientation();
     distance = lockdock_distance_from_dock_edge(point, bounds, orientation);
 
@@ -293,6 +347,7 @@ bool lockdock_locker_set_target(CGDirectDisplayID display_id,
         return false;
     }
 
+    lockdock_locker_refresh_display_cache();
     lockdock_invalidate_dock_orientation_cache();
     atomic_store(&g_locked_display, display_id);
     return true;

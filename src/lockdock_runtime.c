@@ -370,6 +370,7 @@ bool lockdock_relocate_display(CGDirectDisplayID display_id,
     }
 
     CGWarpMouseCursorPosition(old_position);
+    lockdock_post_move_event(source, old_position);
     if (cursor_locked) {
         lockdock_set_cursor_association(true);
     }

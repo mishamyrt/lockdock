@@ -25,6 +25,8 @@ static size_t g_dock_probe_sequence_count = 0;
 static size_t g_dock_probe_sequence_index = 0;
 static CGPoint g_warp_positions[64];
 static size_t g_warp_position_count = 0;
+static CGPoint g_mouse_event_positions[128];
+static size_t g_mouse_event_position_count = 0;
 
 typedef struct {
     CGDirectDisplayID display_id;
@@ -189,8 +191,15 @@ CGEventRef CGEventCreateMouseEvent(CGEventSourceRef source,
                                    CGMouseButton mouse_button) {
     (void)source;
     (void)mouse_type;
-    (void)mouse_cursor_position;
     (void)mouse_button;
+
+    if (g_mouse_event_position_count <
+        (sizeof(g_mouse_event_positions) / sizeof(g_mouse_event_positions[0]))) {
+        g_mouse_event_positions[g_mouse_event_position_count] =
+            mouse_cursor_position;
+        g_mouse_event_position_count++;
+    }
+
     return NULL;
 }
 
@@ -255,6 +264,8 @@ void setUp(void) {
     g_dock_probe_sequence_index = 0;
     memset(g_warp_positions, 0, sizeof(g_warp_positions));
     g_warp_position_count = 0;
+    memset(g_mouse_event_positions, 0, sizeof(g_mouse_event_positions));
+    g_mouse_event_position_count = 0;
     memset(g_display_bounds, 0, sizeof(g_display_bounds));
     g_display_bounds_count = 0;
 }
@@ -367,6 +378,11 @@ static void test_relocate_display_uses_right_edge_when_bottom_corner_has_no_cont
     TEST_ASSERT_TRUE(g_warp_position_count > 0);
     TEST_ASSERT_EQUAL_INT(2990, (int)g_warp_positions[0].x);
     TEST_ASSERT_EQUAL_INT(599, (int)g_warp_positions[0].y);
+    TEST_ASSERT_TRUE(g_mouse_event_position_count > 0);
+    TEST_ASSERT_EQUAL_INT(
+        0, (int)g_mouse_event_positions[g_mouse_event_position_count - 1].x);
+    TEST_ASSERT_EQUAL_INT(
+        0, (int)g_mouse_event_positions[g_mouse_event_position_count - 1].y);
 }
 
 static void test_relocate_display_falls_back_to_safe_segment_when_corner_has_contact(

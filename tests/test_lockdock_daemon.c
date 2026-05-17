@@ -25,6 +25,7 @@ static CGDirectDisplayID g_relocated_display = 0;
 static bool g_relocate_success = true;
 static int g_set_target_count = 0;
 static int g_clear_target_count = 0;
+static int g_refresh_display_cache_count = 0;
 static int g_usleep_count = 0;
 static useconds_t g_last_usleep = 0;
 static int g_settle_sleep_count = 0;
@@ -139,6 +140,10 @@ bool lockdock_locker_set_target(CGDirectDisplayID display_id,
     g_locker_target = display_id;
     g_set_target_count++;
     return true;
+}
+
+void lockdock_locker_refresh_display_cache(void) {
+    g_refresh_display_cache_count++;
 }
 
 void lockdock_locker_clear_target(void) {
@@ -286,6 +291,7 @@ void setUp(void) {
     g_relocate_success = true;
     g_set_target_count = 0;
     g_clear_target_count = 0;
+    g_refresh_display_cache_count = 0;
     g_usleep_count = 0;
     g_last_usleep = 0;
     g_settle_sleep_count = 0;
@@ -417,6 +423,22 @@ static void test_pending_display_reconcile_waits_for_reconfiguration_to_settle(
     TEST_ASSERT_EQUAL_UINT32(400, g_locker_target);
 }
 
+static void test_pending_display_reconcile_refreshes_cache_for_active_lock(void) {
+    char error[LOCKDOCK_ERROR_BUFFER_SIZE] = "";
+
+    g_locker_target = 600;
+    g_active_displays[0] = 600;
+    g_active_display_count = 1;
+    g_status.display_count = 1;
+    g_status.displays[0] = 600;
+    g_status.location_index = 0;
+    atomic_store(&g_display_state_dirty, true);
+
+    lockdock_reconcile_pending_display_state(error, sizeof(error));
+    TEST_ASSERT_EQUAL_INT(1, g_refresh_display_cache_count);
+    TEST_ASSERT_EQUAL_UINT32(600, g_locker_target);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_reconnect_relocates_dock_before_restoring_lock);
@@ -424,5 +446,6 @@ int main(void) {
     RUN_TEST(test_active_lock_relocates_dock_when_it_drifted);
     RUN_TEST(test_reconnect_retries_when_first_relocation_probe_is_stale);
     RUN_TEST(test_pending_display_reconcile_waits_for_reconfiguration_to_settle);
+    RUN_TEST(test_pending_display_reconcile_refreshes_cache_for_active_lock);
     return UNITY_END();
 }

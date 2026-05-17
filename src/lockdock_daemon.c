@@ -939,6 +939,10 @@ static void lockdock_reconcile_pending_display_state(char *error,
             (double)LOCKDOCK_DISPLAY_RECONFIGURATION_SETTLE_DELAY_US / 1000000.0);
     usleep(LOCKDOCK_DISPLAY_RECONFIGURATION_SETTLE_DELAY_US);
 
+    if (lockdock_locker_get_target() != 0) {
+        lockdock_locker_refresh_display_cache();
+    }
+
     if (!lockdock_reconcile_display_state(error, error_size)) {
         fprintf(stderr, "Display reconcile failed: %s\n", error);
     }
