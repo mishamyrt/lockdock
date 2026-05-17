@@ -2,7 +2,6 @@
 
 #include "lockdock_display.h"
 #include "lockdock_locker.h"
-#include "lockdock_platform.h"
 #include "lockdock_preferences.h"
 #include "lockdock_runtime.h"
 
@@ -29,7 +28,7 @@ static int g_daemon_wakeup_pipe[2] = {-1, -1};
 static const useconds_t LOCKDOCK_DISPLAY_RECONFIGURATION_SETTLE_DELAY_US = 1500000;
 static const int LOCKDOCK_DISPLAY_RELOCATION_RETRY_ATTEMPTS = 5;
 static const useconds_t LOCKDOCK_DISPLAY_RELOCATION_RETRY_DELAY_US = 1000000;
-static const time_t LOCKDOCK_DISPLAY_POLL_INTERVAL_SECONDS = 2;
+static const time_t LOCKDOCK_DISPLAY_POLL_INTERVAL_SECONDS = 3;
 
 typedef struct {
     CGDirectDisplayID dock_display;
@@ -48,41 +47,6 @@ static void lockdock_signal_handler(int signal_number) {
             write(g_daemon_wakeup_pipe[1], &token, sizeof(token));
         }
     }
-}
-
-static void lockdock_notify_daemon(void) {
-    unsigned char token = 0;
-    ssize_t written;
-
-    if (g_daemon_wakeup_pipe[1] < 0) {
-        return;
-    }
-
-    do {
-        written = write(g_daemon_wakeup_pipe[1], &token, sizeof(token));
-    } while (written < 0 && errno == EINTR);
-}
-
-static void lockdock_mark_display_state_dirty(void) {
-    lockdock_invalidate_display_name_cache();
-    lockdock_invalidate_dock_orientation_cache();
-    atomic_store(&g_display_state_dirty, true);
-    lockdock_notify_daemon();
-}
-
-static void lockdock_display_reconfiguration_callback(
-    CGDirectDisplayID display_id,
-    CGDisplayChangeSummaryFlags flags,
-    void *user_info) {
-    (void)user_info;
-
-    fprintf(stderr, "Display callback: display=%u flags=0x%x\n", display_id, flags);
-
-    if ((flags & kCGDisplayBeginConfigurationFlag) != 0) {
-        return;
-    }
-
-    lockdock_mark_display_state_dirty();
 }
 
 static void lockdock_set_error(char *buffer,
@@ -830,25 +794,6 @@ static int lockdock_open_server_socket(char *socket_path,
     return fd;
 }
 
-static bool lockdock_register_display_callback(char *error, size_t error_size) {
-    CGError cg_error = CGDisplayRegisterReconfigurationCallback(
-        lockdock_display_reconfiguration_callback, NULL);
-
-    if (cg_error == kCGErrorSuccess) {
-        return true;
-    }
-
-    snprintf(error, error_size,
-             "Failed to register display reconfiguration callback (%d)",
-             (int)cg_error);
-    return false;
-}
-
-static void lockdock_remove_display_callback(void) {
-    CGDisplayRemoveReconfigurationCallback(lockdock_display_reconfiguration_callback,
-                                           NULL);
-}
-
 static void lockdock_close_wakeup_pipe(void) {
     if (g_daemon_wakeup_pipe[0] >= 0) {
         close(g_daemon_wakeup_pipe[0]);
@@ -937,19 +882,11 @@ static void lockdock_reconcile_pending_display_state(char *error,
     }
 }
 
-static void lockdock_poll_display_state(char *error, size_t error_size) {
-    fprintf(stderr, "Display poll: checking display state\n");
-    if (!lockdock_reconcile_display_state(error, error_size)) {
-        fprintf(stderr, "Display poll reconcile failed: %s\n", error);
-    }
-}
-
 int lockdock_run_daemon(void) {
     char socket_path[PATH_MAX] = {0};
     char pid_path[PATH_MAX] = {0};
     char error[LOCKDOCK_ERROR_BUFFER_SIZE];
     int listen_fd = -1;
-    bool display_callback_registered = false;
     int exit_code = 1;
 
     signal(SIGINT, lockdock_signal_handler);
@@ -967,12 +904,6 @@ int lockdock_run_daemon(void) {
         fprintf(stderr, "%s\n", error);
         goto cleanup;
     }
-
-    if (!lockdock_register_display_callback(error, sizeof(error))) {
-        fprintf(stderr, "%s\n", error);
-        goto cleanup;
-    }
-    display_callback_registered = true;
 
     if (!lockdock_reconcile_display_state(error, sizeof(error))) {
         fprintf(stderr, "Display reconcile failed: %s\n", error);
@@ -1069,9 +1000,6 @@ int lockdock_run_daemon(void) {
     exit_code = 0;
 
 cleanup:
-    if (display_callback_registered) {
-        lockdock_remove_display_callback();
-    }
     lockdock_locker_shutdown();
     lockdock_close_wakeup_pipe();
     if (listen_fd >= 0) {
