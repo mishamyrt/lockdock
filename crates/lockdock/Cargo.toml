@@ -1,0 +1,28 @@
+[package]
+name = "lockdock"
+version = "0.4.2"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "lockdock"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+lockdock-daemon = { path = "../lockdock-daemon" }
+lockdock-ipc = { path = "../lockdock-ipc" }
+lunchd.workspace = true
+thiserror.workspace = true
+
+[lints.rust]
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -2 }
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+print_stdout = "allow"
+print_stderr = "allow"

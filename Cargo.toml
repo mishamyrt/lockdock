@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "crates/lockdock",
+    "crates/lockdock-daemon",
+    "crates/lockdock-display",
+    "crates/lockdock-ipc",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+repository = "https://github.com/mishamyrt/lockdock"
+
+[workspace.dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.18"
+clap = { version = "4.5.53", features = ["derive"] }
+lunchd = "0.1.1"
+cc = "1.2.47"
+prefs = { git = "https://github.com/mishamyrt/prefs", package = "prefs" }

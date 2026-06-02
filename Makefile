@@ -43,19 +43,25 @@ $(ARTIFACTS_DIR):
 $(ARTIFACTS_DIR)/%.o: $(SRC_DIR)/%.c | $(ARTIFACTS_DIR)
 	$(CC) $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $(OPTFLAGS) -o $@ $(OBJS) $(FRAMEWORKS)
+$(TARGET): Cargo.toml Cargo.lock $(shell find crates -type f) | $(BUILD_DIR)
+	cargo build --release -p lockdock
+	cp target/release/lockdock $@
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) target
 
 fmt:
+	cargo fmt
 	find src/ tests/ \
 		\( -iname '*.h' -o -iname '*.c' \) \
 		-not -path "*/thirdparty/*" \
 		| xargs clang-format -i
 
 tidy:
+	cargo clippy --workspace --all-targets -- -D warnings
 	$(CLANG_TIDY) -quiet $(SRCS) -- $(CFLAGS)
 
 install: $(TARGET)
