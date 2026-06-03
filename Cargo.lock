@@ -227,6 +227,7 @@ version = "0.1.0"
 dependencies = [
  "lockdock-display",
  "lockdock-ipc",
+ "lockdock-mouse",
  "prefs",
  "thiserror",
 ]
@@ -246,6 +247,14 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "lockdock-mouse"
+version = "0.1.0"
+dependencies = [
+ "cc",
  "thiserror",
 ]
 

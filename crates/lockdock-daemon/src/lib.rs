@@ -1,6 +1,11 @@
+mod display_lock;
+mod relocation;
+
+use display_lock::{clear_lock_target, lock_target, set_lock_target, shutdown};
 use lockdock_display::{DisplayId, DisplayIdentity};
 use lockdock_ipc::{CommandResult, Incoming, Request, Response, Server, State};
 use prefs::{Key, Preferences};
+use relocation::relocate_display;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -80,7 +85,7 @@ pub fn run(config: &Config) -> Result<()> {
         }
     }
 
-    lockdock_display::shutdown();
+    shutdown();
     let _ = fs::remove_file(&config.pid_path);
     Ok(())
 }
@@ -118,7 +123,7 @@ fn handle_request(request: &Request, preferences: &DisplayPreferences) -> Respon
 
 fn build_state() -> Result<State> {
     let status = lockdock_display::query_status()?;
-    let target = lockdock_display::lock_target().and_then(|display_id| {
+    let target = lock_target().and_then(|display_id| {
         status
             .displays
             .iter()
@@ -145,25 +150,25 @@ fn apply_set_state(target_index: usize, preferences: &DisplayPreferences) -> Res
     let identity = lockdock_display::display_identity(display_id)?;
 
     if status.displays[status.location_index] != display_id {
-        lockdock_display::clear_lock_target();
+        clear_lock_target();
         relocate_display_until_current(display_id)?;
     }
 
-    lockdock_display::set_lock_target(display_id)?;
+    set_lock_target(display_id)?;
     preferences.save(&identity)?;
     Ok(())
 }
 
 fn apply_unlock(preferences: &DisplayPreferences) -> Result<()> {
     preferences.clear()?;
-    lockdock_display::clear_lock_target();
+    clear_lock_target();
     Ok(())
 }
 
 fn reconcile_display_state(preferences: &DisplayPreferences) -> Result<()> {
-    if let Some(locked_display) = lockdock_display::lock_target() {
+    if let Some(locked_display) = lock_target() {
         if lockdock_display::find_display_index(locked_display).is_none() {
-            lockdock_display::clear_lock_target();
+            clear_lock_target();
             return Ok(());
         }
 
@@ -184,7 +189,7 @@ fn reconcile_display_state(preferences: &DisplayPreferences) -> Result<()> {
     };
 
     relocate_display_until_current(preferred_display)?;
-    lockdock_display::set_lock_target(preferred_display)?;
+    set_lock_target(preferred_display)?;
     Ok(())
 }
 
@@ -192,9 +197,7 @@ fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {
     let mut last_error = None;
 
     for _ in 0..RELOCATION_RETRY_ATTEMPTS {
-        if let Err(error) = lockdock_display::relocate_display(display_id) {
-            return Err(error.into());
-        }
+        relocate_display(display_id)?;
 
         thread::sleep(RELOCATION_RETRY_DELAY);
 
