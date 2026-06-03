@@ -1,17 +1,17 @@
 [package]
-name = "lockdock-daemon"
+name = "lockdock-mouse"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+build = "build.rs"
 
 [dependencies]
-lockdock-display = { path = "../lockdock-display" }
-lockdock-ipc = { path = "../lockdock-ipc" }
-lockdock-mouse = { path = "../lockdock-mouse" }
-prefs.workspace = true
 thiserror.workspace = true
+
+[build-dependencies]
+cc.workspace = true
 
 [lints.rust]
 unreachable_pub = "warn"
@@ -20,4 +20,3 @@ unreachable_pub = "warn"
 pedantic = { level = "warn", priority = -2 }
 missing_errors_doc = "allow"
 module_name_repetitions = "allow"
-too_many_lines = "allow"

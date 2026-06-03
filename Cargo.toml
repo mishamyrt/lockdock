@@ -4,6 +4,7 @@ members = [
     "crates/lockdock-daemon",
     "crates/lockdock-display",
     "crates/lockdock-ipc",
+    "crates/lockdock-mouse",
 ]
 resolver = "2"
 
