@@ -127,7 +127,6 @@ extern "C" {
     fn lockdock_shim_event_source_create() -> *mut c_void;
     fn lockdock_shim_event_source_set_suppression_interval(source: *mut c_void, interval: f64);
     fn lockdock_shim_release(object: *mut c_void);
-    fn lockdock_shim_set_cursor_association(associated: bool) -> bool;
     fn lockdock_shim_warp_mouse(point: ShimPoint);
     fn lockdock_shim_post_mouse_moved(source: *mut c_void, point: ShimPoint);
     fn lockdock_shim_post_edge_nudge(source: *mut c_void, point: ShimPoint, orientation: c_int);
@@ -217,7 +216,6 @@ pub fn relocate_display(display_id: DisplayId) -> Result<()> {
     let orientation = dock_orientation();
     let old_position = current_mouse_location();
     let source = EventSource::new();
-    let cursor_locked = unsafe { lockdock_shim_set_cursor_association(false) };
     let safe_segment = find_safe_edge_segment(display_id, orientation);
     let edge_offset = 1.0;
 
@@ -270,26 +268,13 @@ pub fn relocate_display(display_id: DisplayId) -> Result<()> {
         unsafe { lockdock_shim_event_source_set_suppression_interval(source.raw, 0.0) };
     }
 
-    smooth_move(
-        source.as_ref(),
-        old_position,
-        approach,
-        RELOCATION_EDGE_MOVE_STEPS,
-    );
+    move_cursor(source.as_ref(), approach);
     thread::sleep(RELOCATION_APPROACH_DELAY);
     smooth_move(source.as_ref(), approach, edge, RELOCATION_EDGE_MOVE_STEPS);
 
     let relocated = wait_for_dock_relocation(source.as_ref(), edge, orientation, display_id);
 
-    smooth_move(
-        source.as_ref(),
-        edge,
-        old_position,
-        RELOCATION_EDGE_MOVE_STEPS,
-    );
-    if cursor_locked {
-        unsafe { lockdock_shim_set_cursor_association(true) };
-    }
+    move_cursor(source.as_ref(), old_position);
 
     if relocated {
         Ok(())
@@ -767,6 +752,13 @@ fn current_mouse_location() -> ShimPoint {
         point
     } else {
         ShimPoint::default()
+    }
+}
+
+fn move_cursor(source: Option<&EventSource>, point: ShimPoint) {
+    unsafe { lockdock_shim_warp_mouse(point) };
+    if let Some(source) = source {
+        unsafe { lockdock_shim_post_mouse_moved(source.raw, point) };
     }
 }
 
