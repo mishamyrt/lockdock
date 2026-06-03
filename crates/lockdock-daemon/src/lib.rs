@@ -1,5 +1,5 @@
 use lockdock_display::{DisplayId, DisplayIdentity};
-use lockdock_ipc::{CommandResult, Incoming, Listener, Request, Response, State};
+use lockdock_ipc::{CommandResult, Incoming, Request, Response, Server, State};
 use prefs::{Key, Preferences};
 use std::fs;
 use std::path::PathBuf;
@@ -43,7 +43,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub fn run(config: &Config) -> Result<()> {
-    let listener = Listener::bind(&config.socket_path)?;
+    let listener = Server::bind(&config.socket_path)?;
     write_pid_file(&config.pid_path)?;
     let preferences = DisplayPreferences::new()?;
 
