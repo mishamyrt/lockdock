@@ -152,7 +152,7 @@ Except for this, it works with full-screen apps, has no issues with virtual disp
 
 ## Development
 
-The daemon IPC protocol is described in [docs/ipc.md](docs/ipc.md).
+The daemon IPC protocol is described in [ipc.md](crates/lockdock-ipc/docs/ipc.md).
 
 ## License
 
