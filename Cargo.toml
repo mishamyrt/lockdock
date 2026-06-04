@@ -29,3 +29,10 @@ clap = { version = "4.5.53", features = ["derive"] }
 lunchd = "0.1.1"
 cc = "1.2.47"
 prefs = { git = "https://github.com/mishamyrt/prefs", package = "prefs" }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3
