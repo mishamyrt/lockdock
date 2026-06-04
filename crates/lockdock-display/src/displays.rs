@@ -1,19 +1,13 @@
 use std::os::raw::c_uint;
 
+use lockdock_geometry::{Point, Rect};
+
 use crate::error::{Error, Result};
 use crate::ffi;
-use crate::geometry::Rect;
 use crate::types::DisplayId;
 
 const MAX_DISPLAYS: usize = 32;
 const MAX_DISPLAYS_C: c_uint = 32;
-
-#[must_use]
-pub fn find_display_index(display_id: DisplayId) -> Option<usize> {
-    active_displays()
-        .iter()
-        .position(|display| *display == display_id)
-}
 
 #[must_use]
 pub fn active_displays() -> Vec<DisplayId> {
@@ -32,4 +26,42 @@ pub fn display_bounds(display_id: DisplayId) -> Result<Rect> {
     } else {
         Err(Error::DisplayNotFound(display_id))
     }
+}
+
+pub(crate) fn display_at_point(point: Point) -> Option<DisplayId> {
+    active_displays().into_iter().find(|display_id| {
+        display_bounds(*display_id)
+            .map(|bounds| bounds.contains(point))
+            .unwrap_or(false)
+    })
+}
+
+#[must_use]
+pub(crate) fn display_for_rect(rect: Rect) -> Option<DisplayId> {
+    if rect.width <= 0.0 || rect.height <= 0.0 {
+        return None;
+    }
+
+    let mut best = None;
+    let mut best_area = 0.0;
+
+    for display_id in active_displays() {
+        let Ok(bounds) = display_bounds(display_id) else {
+            continue;
+        };
+        let intersection = rect.intersection(bounds);
+        let area = intersection.width * intersection.height;
+
+        if area > best_area {
+            best_area = area;
+            best = Some(display_id);
+        }
+    }
+
+    best.or_else(|| {
+        display_at_point(Point {
+            x: rect.x + rect.width / 2.0,
+            y: rect.y + rect.height / 2.0,
+        })
+    })
 }

@@ -226,6 +226,7 @@ name = "lockdock-daemon"
 version = "0.1.0"
 dependencies = [
  "lockdock-display",
+ "lockdock-geometry",
  "lockdock-ipc",
  "lockdock-mouse",
  "prefs",
@@ -237,9 +238,16 @@ name = "lockdock-display"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "lockdock-geometry",
+ "lockdock-mouse",
+ "prefs",
  "serde_json",
  "thiserror",
 ]
+
+[[package]]
+name = "lockdock-geometry"
+version = "0.1.0"
 
 [[package]]
 name = "lockdock-ipc"
@@ -255,6 +263,7 @@ name = "lockdock-mouse"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "lockdock-geometry",
  "thiserror",
 ]
 

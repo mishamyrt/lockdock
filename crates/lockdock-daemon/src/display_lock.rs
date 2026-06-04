@@ -1,8 +1,9 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use lockdock_display::{DisplayId, DockOrientation, Rect};
-use lockdock_mouse::{EventTap, MouseEvent, MouseEventKind, Point};
+use lockdock_display::{DisplayId, DockOrientation};
+use lockdock_geometry::{Point, Rect};
+use lockdock_mouse::{EventTap, MouseEvent, MouseEventKind};
 
 use crate::{Error, Result};
 
@@ -105,7 +106,7 @@ fn cached_display_at_point(point: Point) -> Option<DisplayBounds> {
         .expect("display cache mutex poisoned")
         .iter()
         .copied()
-        .find(|display| rect_contains_point(display.bounds, point))
+        .find(|display| display.bounds.contains(point))
 }
 
 fn distance_from_dock_edge(point: Point, bounds: Rect, orientation: DockOrientation) -> f64 {
@@ -114,11 +115,4 @@ fn distance_from_dock_edge(point: Point, bounds: Rect, orientation: DockOrientat
         DockOrientation::Right => (bounds.x + bounds.width) - point.x,
         DockOrientation::Bottom => (bounds.y + bounds.height) - point.y,
     }
-}
-
-fn rect_contains_point(rect: Rect, point: Point) -> bool {
-    point.x >= rect.x
-        && point.x < rect.x + rect.width
-        && point.y >= rect.y
-        && point.y < rect.y + rect.height
 }

@@ -1,8 +1,9 @@
 use std::thread;
 use std::time::Duration;
 
-use lockdock_display::{DisplayId, DockOrientation, Rect};
-use lockdock_mouse::{EventSource, Point};
+use lockdock_display::{DisplayId, DockOrientation};
+use lockdock_geometry::{Point, Rect};
+use lockdock_mouse::EventSource;
 
 use crate::{Error, Result};
 

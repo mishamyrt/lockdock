@@ -252,26 +252,3 @@ bool lockdock_display_copy_accessibility_dock_window_bounds(
     *rect_out = lockdock_display_rect_from_cg(best_bounds);
     return true;
 }
-
-bool lockdock_display_copy_dock_orientation(char *buffer, size_t buffer_size) {
-    CFPropertyListRef value;
-    bool copied = false;
-
-    if (buffer == NULL || buffer_size == 0) {
-        return false;
-    }
-
-    buffer[0] = '\0';
-    value = CFPreferencesCopyAppValue(CFSTR("orientation"), CFSTR("com.apple.dock"));
-    if (value == NULL) {
-        return false;
-    }
-
-    if (CFGetTypeID(value) == CFStringGetTypeID()) {
-        copied = CFStringGetCString((CFStringRef)value, buffer, buffer_size,
-                                    kCFStringEncodingUTF8);
-    }
-
-    CFRelease(value);
-    return copied;
-}

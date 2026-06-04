@@ -1,11 +1,10 @@
 mod event_source;
 mod event_tap;
 mod ffi;
-mod point;
 
 pub use event_source::EventSource;
 pub use event_tap::{EventTap, MouseEvent, MouseEventKind};
-pub use point::Point;
+use lockdock_geometry::Point;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

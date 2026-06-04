@@ -1,13 +1,13 @@
-use std::os::raw::c_char;
+use lockdock_geometry::{Point, Rect};
+use prefs::{Key, Preferences};
 
-use crate::displays::{active_displays, display_bounds};
+use crate::displays::{active_displays, display_at_point, display_bounds, display_for_rect};
 use crate::error::{Error, Result};
 use crate::ffi;
-use crate::geometry::{rect_contains_point, rect_intersection, Point, Rect};
 use crate::types::{DisplayId, Status};
-use crate::util::c_string;
 
-const DOCK_ORIENTATION_BUFFER_SIZE: usize = 32;
+const DOCK_BUNDLE_ID: &str = "com.apple.dock";
+const DOCK_ORIENTATION: Key<String> = Key::new("orientation");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DockOrientation {
@@ -32,48 +32,16 @@ pub fn query_status() -> Result<Status> {
 
 #[must_use]
 pub fn dock_orientation() -> DockOrientation {
-    let mut buffer = [0 as c_char; DOCK_ORIENTATION_BUFFER_SIZE];
-    let copied =
-        unsafe { ffi::lockdock_display_copy_dock_orientation(buffer.as_mut_ptr(), buffer.len()) };
-    if !copied {
-        return DockOrientation::Bottom;
-    }
+    let orientation = Preferences::new(DOCK_BUNDLE_ID)
+        .ok()
+        .and_then(|preferences| preferences.get(DOCK_ORIENTATION).ok())
+        .flatten();
 
-    match c_string(&buffer).as_str() {
-        "left" => DockOrientation::Left,
-        "right" => DockOrientation::Right,
+    match orientation.as_deref() {
+        Some("left") => DockOrientation::Left,
+        Some("right") => DockOrientation::Right,
         _ => DockOrientation::Bottom,
     }
-}
-
-#[must_use]
-pub fn display_for_rect(rect: Rect) -> Option<DisplayId> {
-    if rect.width <= 0.0 || rect.height <= 0.0 {
-        return None;
-    }
-
-    let mut best = None;
-    let mut best_area = 0.0;
-
-    for display_id in active_displays() {
-        let Ok(bounds) = display_bounds(display_id) else {
-            continue;
-        };
-        let intersection = rect_intersection(rect, bounds);
-        let area = intersection.width * intersection.height;
-
-        if area > best_area {
-            best_area = area;
-            best = Some(display_id);
-        }
-    }
-
-    best.or_else(|| {
-        display_at_point(Point {
-            x: rect.x + rect.width / 2.0,
-            y: rect.y + rect.height / 2.0,
-        })
-    })
 }
 
 fn dock_display() -> Result<DisplayId> {
@@ -112,12 +80,4 @@ fn capture_dock_display() -> Option<DisplayId> {
     }
 
     None
-}
-
-fn display_at_point(point: Point) -> Option<DisplayId> {
-    active_displays().into_iter().find(|display_id| {
-        display_bounds(*display_id)
-            .map(|bounds| rect_contains_point(bounds, point))
-            .unwrap_or(false)
-    })
 }
