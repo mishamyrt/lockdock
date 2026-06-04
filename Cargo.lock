@@ -239,7 +239,6 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "lockdock-geometry",
- "lockdock-mouse",
  "prefs",
  "serde_json",
  "thiserror",
