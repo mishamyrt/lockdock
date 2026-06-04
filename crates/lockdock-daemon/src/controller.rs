@@ -1,7 +1,7 @@
 use std::thread;
 use std::time::Duration;
 
-use lockdock_display::DisplayId;
+use lockdock_display::{DisplayId, DockOrientation};
 use lockdock_ipc::{CommandResult, Request, Response};
 
 use crate::display_lock::{clear_lock_target, lock_target, set_lock_target};
@@ -43,6 +43,13 @@ fn apply_set_state(
         *snapshot.status.displays.get(target_index).ok_or_else(|| {
             Error::Operation(format!("Display index {target_index} is out of range"))
         })?;
+
+    if !dock_is_supported() {
+        disable_lock(preferences)?;
+        snapshot.refresh_status()?;
+        return Ok(());
+    }
+
     let identity = display_identity(display_id, &snapshot.info)?;
 
     if snapshot.status.displays[snapshot.status.location_index] != display_id {
@@ -66,6 +73,11 @@ pub(crate) fn reconcile_display_state(
     preferences: &DisplayPreferences,
     snapshot: &DisplaySnapshot,
 ) -> Result<()> {
+    if !dock_is_supported() {
+        disable_lock(preferences)?;
+        return Ok(());
+    }
+
     if let Some(locked_display) = lock_target() {
         if find_display_index(locked_display, &snapshot.status).is_none() {
             clear_lock_target();
@@ -90,6 +102,16 @@ pub(crate) fn reconcile_display_state(
     relocate_display_until_current(preferred_display)?;
     set_lock_target(preferred_display)?;
     Ok(())
+}
+
+fn disable_lock(preferences: &DisplayPreferences) -> Result<()> {
+    preferences.clear()?;
+    clear_lock_target();
+    Ok(())
+}
+
+fn dock_is_supported() -> bool {
+    lockdock_display::dock_orientation() == DockOrientation::Bottom
 }
 
 fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {

@@ -2,7 +2,7 @@ use std::thread;
 use std::time::Duration;
 
 use lockdock_display::{DisplayId, DockOrientation};
-use lockdock_geometry::{Point, Rect};
+use lockdock_geometry::Point;
 use lockdock_mouse::EventSource;
 
 use crate::{Error, Result};
@@ -27,54 +27,23 @@ struct SafeSegment {
 pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
     let bounds = lockdock_display::display_bounds(display_id)?;
     let orientation = lockdock_display::dock_orientation();
+    if orientation != DockOrientation::Bottom {
+        return Ok(());
+    }
+
     let old_position = current_mouse_location();
     let source = EventSource::new();
-    let safe_segment = find_safe_edge_segment(display_id, orientation);
+    let safe_segment = find_safe_edge_segment(display_id);
     let edge_offset = 1.0;
-
-    let (approach, edge) = match orientation {
-        DockOrientation::Bottom => {
-            let edge_y = bounds.y + bounds.height;
-            let trigger_x = choose_trigger_coordinate(display_id, orientation, safe_segment);
-            (
-                Point {
-                    x: trigger_x,
-                    y: edge_y - edge_offset,
-                },
-                Point {
-                    x: trigger_x,
-                    y: edge_y - 1.0,
-                },
-            )
-        }
-        DockOrientation::Left => {
-            let edge_x = bounds.x;
-            let trigger_y = choose_trigger_coordinate(display_id, orientation, safe_segment);
-            (
-                Point {
-                    x: edge_x + edge_offset,
-                    y: trigger_y,
-                },
-                Point {
-                    x: edge_x + 1.0,
-                    y: trigger_y,
-                },
-            )
-        }
-        DockOrientation::Right => {
-            let edge_x = bounds.x + bounds.width;
-            let trigger_y = choose_trigger_coordinate(display_id, orientation, safe_segment);
-            (
-                Point {
-                    x: edge_x - edge_offset,
-                    y: trigger_y,
-                },
-                Point {
-                    x: edge_x - 1.0,
-                    y: trigger_y,
-                },
-            )
-        }
+    let edge_y = bounds.y + bounds.height;
+    let trigger_x = choose_trigger_coordinate(display_id, safe_segment);
+    let approach = Point {
+        x: trigger_x,
+        y: edge_y - edge_offset,
+    };
+    let edge = Point {
+        x: trigger_x,
+        y: edge_y - 1.0,
     };
 
     if let Some(source) = source.as_ref() {
@@ -85,7 +54,7 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
     thread::sleep(RELOCATION_APPROACH_DELAY);
     smooth_move(source.as_ref(), approach, edge, RELOCATION_EDGE_MOVE_STEPS);
 
-    let relocated = wait_for_dock_relocation(source.as_ref(), edge, orientation, display_id);
+    let relocated = wait_for_dock_relocation(source.as_ref(), edge, display_id);
 
     move_cursor(source.as_ref(), old_position);
 
@@ -98,12 +67,14 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
     }
 }
 
-fn find_safe_edge_segment(target_id: DisplayId, edge: DockOrientation) -> SafeSegment {
+fn find_safe_edge_segment(target_id: DisplayId) -> SafeSegment {
     let Ok(target) = lockdock_display::display_bounds(target_id) else {
         return SafeSegment::default();
     };
-    let (edge_min, edge_max, edge_cross_pos) = edge_geometry(target, edge);
-    let mut overlaps = collect_edge_overlaps(target_id, edge, edge_min, edge_max, edge_cross_pos);
+    let edge_min = target.x;
+    let edge_max = target.x + target.width;
+    let edge_cross_pos = target.y + target.height;
+    let mut overlaps = collect_edge_overlaps(target_id, edge_min, edge_max, edge_cross_pos);
     overlaps.sort_by(|left, right| {
         left.start
             .partial_cmp(&right.start)
@@ -129,27 +100,24 @@ fn find_safe_edge_segment(target_id: DisplayId, edge: DockOrientation) -> SafeSe
     best
 }
 
-fn edge_point_has_contact(
-    target_id: DisplayId,
-    edge: DockOrientation,
-    point_along_edge: f64,
-) -> bool {
+fn edge_point_has_contact(target_id: DisplayId, point_along_edge: f64) -> bool {
     let Ok(target) = lockdock_display::display_bounds(target_id) else {
         return false;
     };
-    let (edge_min, edge_max, edge_cross_pos) = edge_geometry(target, edge);
+    let edge_min = target.x;
+    let edge_max = target.x + target.width;
+    let edge_cross_pos = target.y + target.height;
     if point_along_edge < edge_min || point_along_edge > edge_max {
         return false;
     }
 
-    collect_edge_overlaps(target_id, edge, edge_min, edge_max, edge_cross_pos)
+    collect_edge_overlaps(target_id, edge_min, edge_max, edge_cross_pos)
         .iter()
         .any(|overlap| point_along_edge >= overlap.start && point_along_edge <= overlap.end)
 }
 
 fn collect_edge_overlaps(
     target_id: DisplayId,
-    edge: DockOrientation,
     edge_min: f64,
     edge_max: f64,
     edge_cross_pos: f64,
@@ -163,22 +131,10 @@ fn collect_edge_overlaps(
         let Ok(other) = lockdock_display::display_bounds(display_id) else {
             continue;
         };
-        let (other_min_along, other_max_along, other_min_cross, other_max_cross) =
-            if edge == DockOrientation::Bottom {
-                (
-                    other.x,
-                    other.x + other.width,
-                    other.y,
-                    other.y + other.height,
-                )
-            } else {
-                (
-                    other.y,
-                    other.y + other.height,
-                    other.x,
-                    other.x + other.width,
-                )
-            };
+        let other_min_along = other.x;
+        let other_max_along = other.x + other.width;
+        let other_min_cross = other.y;
+        let other_max_cross = other.y + other.height;
 
         if other_max_cross < edge_cross_pos - 1.0 || other_min_cross > edge_cross_pos + 1.0 {
             continue;
@@ -199,14 +155,6 @@ fn collect_edge_overlaps(
     overlaps
 }
 
-fn edge_geometry(bounds: Rect, edge: DockOrientation) -> (f64, f64, f64) {
-    match edge {
-        DockOrientation::Bottom => (bounds.x, bounds.x + bounds.width, bounds.y + bounds.height),
-        DockOrientation::Left => (bounds.y, bounds.y + bounds.height, bounds.x),
-        DockOrientation::Right => (bounds.y, bounds.y + bounds.height, bounds.x + bounds.width),
-    }
-}
-
 fn update_best_segment(best: &mut SafeSegment, start: f64, end: f64) {
     if end <= start {
         return;
@@ -222,21 +170,13 @@ fn update_best_segment(best: &mut SafeSegment, start: f64, end: f64) {
     }
 }
 
-fn choose_trigger_coordinate(
-    target_display_id: DisplayId,
-    orientation: DockOrientation,
-    safe_segment: SafeSegment,
-) -> f64 {
+fn choose_trigger_coordinate(target_display_id: DisplayId, safe_segment: SafeSegment) -> f64 {
     let Ok(bounds) = lockdock_display::display_bounds(target_display_id) else {
         return safe_segment.center;
     };
-    let preferred = if orientation == DockOrientation::Bottom {
-        (bounds.x + bounds.width - 10.0).max(bounds.x)
-    } else {
-        (bounds.y + bounds.height - 10.0).max(bounds.y)
-    };
+    let preferred = (bounds.x + bounds.width - 10.0).max(bounds.x);
 
-    if edge_point_has_contact(target_display_id, orientation, preferred) {
+    if edge_point_has_contact(target_display_id, preferred) {
         safe_segment.center
     } else {
         preferred
@@ -246,12 +186,11 @@ fn choose_trigger_coordinate(
 fn wait_for_dock_relocation(
     source: Option<&EventSource>,
     edge: Point,
-    orientation: DockOrientation,
     display_id: DisplayId,
 ) -> bool {
     for attempt in 0..RELOCATION_NUDGE_ATTEMPTS {
         if let Some(source) = source {
-            post_edge_nudge(source, edge, orientation);
+            post_edge_nudge(source, edge);
         }
         thread::sleep(RELOCATION_NUDGE_DELAY);
 
@@ -302,10 +241,6 @@ fn smooth_move(source: Option<&EventSource>, from: Point, to: Point, steps: usiz
     }
 }
 
-fn post_edge_nudge(source: &EventSource, point: Point, orientation: DockOrientation) {
-    match orientation {
-        DockOrientation::Bottom => source.post_delta(point, 0, 1),
-        DockOrientation::Left => source.post_delta(point, -1, 0),
-        DockOrientation::Right => source.post_delta(point, 1, 0),
-    }
+fn post_edge_nudge(source: &EventSource, point: Point) {
+    source.post_delta(point, 0, 1);
 }
