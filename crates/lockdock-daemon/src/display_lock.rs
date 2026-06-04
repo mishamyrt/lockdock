@@ -78,6 +78,11 @@ fn should_suppress_event(event: MouseEvent) -> bool {
         return false;
     }
 
+    if lockdock_display::dock_orientation() != DockOrientation::Bottom {
+        LOCK_TARGET.store(0, Ordering::SeqCst);
+        return false;
+    }
+
     let locked_display = LOCK_TARGET.load(Ordering::SeqCst);
     if locked_display == 0 {
         return false;
@@ -91,11 +96,7 @@ fn should_suppress_event(event: MouseEvent) -> bool {
         return false;
     }
 
-    let distance = distance_from_dock_edge(
-        event.location,
-        current.bounds,
-        lockdock_display::dock_orientation(),
-    );
+    let distance = distance_from_bottom_dock_edge(event.location, current.bounds);
     (0.0..=LOCK_EDGE_ZONE).contains(&distance)
 }
 
@@ -109,10 +110,6 @@ fn cached_display_at_point(point: Point) -> Option<DisplayBounds> {
         .find(|display| display.bounds.contains(point))
 }
 
-fn distance_from_dock_edge(point: Point, bounds: Rect, orientation: DockOrientation) -> f64 {
-    match orientation {
-        DockOrientation::Left => point.x - bounds.x,
-        DockOrientation::Right => (bounds.x + bounds.width) - point.x,
-        DockOrientation::Bottom => (bounds.y + bounds.height) - point.y,
-    }
+fn distance_from_bottom_dock_edge(point: Point, bounds: Rect) -> f64 {
+    (bounds.y + bounds.height) - point.y
 }

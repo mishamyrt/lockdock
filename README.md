@@ -146,7 +146,7 @@ selected display.
 
 Due to the way the algorithm works, the screens must have an area that does not overlap (at least 2 pixels).
 
-There are also currently some issues with the Dock when it's pinned to the right or left. It's a bit hit-and-miss in those cases.
+Lockdock only supports the Dock positioned at the bottom of the screen. If the Dock is positioned on the left or right, Lockdock disables the lock and does not try to move or pin the Dock.
 
 Except for this, it works with full-screen apps, has no issues with virtual displays or clamshell mode, and works with an auto-hiding Dock.
 
