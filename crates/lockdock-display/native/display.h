@@ -20,6 +20,5 @@ bool lockdock_display_is_accessibility_trusted(void);
 bool lockdock_display_copy_dock_window_bounds(LockDockDisplayRect *rect_out);
 bool lockdock_display_copy_accessibility_dock_window_bounds(
     LockDockDisplayRect *rect_out);
-bool lockdock_display_copy_dock_orientation(char *buffer, size_t buffer_size);
 
 #endif

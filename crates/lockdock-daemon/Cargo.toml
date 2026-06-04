@@ -10,6 +10,7 @@ repository.workspace = true
 lockdock-display = { path = "../lockdock-display" }
 lockdock-ipc = { path = "../lockdock-ipc" }
 lockdock-mouse = { path = "../lockdock-mouse" }
+lockdock-geometry = { workspace = true }
 prefs.workspace = true
 thiserror.workspace = true
 

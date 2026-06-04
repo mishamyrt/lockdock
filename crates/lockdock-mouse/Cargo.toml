@@ -9,6 +9,7 @@ build = "build.rs"
 
 [dependencies]
 thiserror.workspace = true
+lockdock-geometry.workspace = true
 
 [build-dependencies]
 cc.workspace = true

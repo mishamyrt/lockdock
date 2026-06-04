@@ -1,6 +1,6 @@
-use std::os::raw::{c_char, c_uint};
+use std::os::raw::c_uint;
 
-use crate::geometry::Rect;
+use lockdock_geometry::Rect;
 
 extern "C" {
     pub(crate) fn lockdock_display_get_active_displays(
@@ -12,9 +12,5 @@ extern "C" {
     pub(crate) fn lockdock_display_copy_dock_window_bounds(rect_out: *mut Rect) -> bool;
     pub(crate) fn lockdock_display_copy_accessibility_dock_window_bounds(
         rect_out: *mut Rect,
-    ) -> bool;
-    pub(crate) fn lockdock_display_copy_dock_orientation(
-        buffer: *mut c_char,
-        buffer_size: usize,
     ) -> bool;
 }
