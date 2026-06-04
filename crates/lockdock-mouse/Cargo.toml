@@ -14,10 +14,5 @@ lockdock-geometry.workspace = true
 [build-dependencies]
 cc.workspace = true
 
-[lints.rust]
-unreachable_pub = "warn"
-
-[lints.clippy]
-pedantic = { level = "warn", priority = -2 }
-missing_errors_doc = "allow"
-module_name_repetitions = "allow"
+[lints]
+workspace = true

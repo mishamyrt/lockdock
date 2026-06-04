@@ -30,6 +30,40 @@ lunchd = "0.1.1"
 cc = "1.2.47"
 prefs = { git = "https://github.com/mishamyrt/prefs", package = "prefs" }
 
+[workspace.lints.rust]
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -2 }
+char_lit_as_u8 = "allow"
+collapsible_else_if = "allow"
+collapsible_if = "allow"
+implicit_hasher = "allow"
+map_unwrap_or = "allow"
+match_same_arms = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+similar_names = "allow"
+single_match_else = "allow"
+too_many_lines = "allow"
+needless_raw_string_hashes = "allow"
+print_stdout = "warn"
+print_stderr = "warn"
+dbg_macro = "warn"
+empty_drop = "warn"
+empty_structs_with_brackets = "warn"
+exit = "warn"
+get_unwrap = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+redundant_clone = "warn"
+debug_assert_with_mut_call = "warn"
+unused_peekable = "warn"
+large_stack_arrays = "allow"
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
