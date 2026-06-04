@@ -17,12 +17,5 @@ lockdock-ipc = { path = "../lockdock-ipc" }
 lunchd.workspace = true
 thiserror.workspace = true
 
-[lints.rust]
-unreachable_pub = "warn"
-
-[lints.clippy]
-pedantic = { level = "warn", priority = -2 }
-missing_errors_doc = "allow"
-module_name_repetitions = "allow"
-print_stdout = "allow"
-print_stderr = "allow"
+[lints]
+workspace = true
