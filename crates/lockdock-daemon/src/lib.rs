@@ -4,7 +4,7 @@ mod relocation;
 use display_lock::{
     clear_lock_target, lock_target, refresh_display_cache, set_lock_target, shutdown,
 };
-use lockdock_display::{DisplayId, DisplayIdentity, DisplayInfo, Status as DisplayStatus};
+use lockdock_display::{DisplayId, DisplayInfo};
 use lockdock_ipc::{CommandResult, Incoming, Request, Response, Server, State};
 use prefs::{Key, Preferences};
 use relocation::relocate_display;
@@ -55,16 +55,31 @@ struct DisplaySnapshot {
     info: HashMap<DisplayId, DisplayInfo>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DisplayStatus {
+    displays: Vec<DisplayId>,
+    location_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DisplayIdentity {
+    is_builtin: bool,
+    vendor_number: u32,
+    model_number: u32,
+    serial_number: u32,
+    uuid: String,
+}
+
 impl DisplaySnapshot {
     fn load() -> Result<Self> {
         Ok(Self {
-            status: lockdock_display::query_status()?,
+            status: query_display_status()?,
             info: lockdock_display::load_display_info()?,
         })
     }
 
     fn refresh_status(&mut self) -> Result<()> {
-        self.status = lockdock_display::query_status()?;
+        self.status = query_display_status()?;
         Ok(())
     }
 
@@ -246,7 +261,7 @@ fn display_identity(
     info: &HashMap<DisplayId, DisplayInfo>,
 ) -> Result<DisplayIdentity> {
     let Some(info) = info.get(&display_id) else {
-        return Err(lockdock_display::Error::MissingIdentity.into());
+        return Err(missing_identity());
     };
 
     let identity = DisplayIdentity {
@@ -260,8 +275,26 @@ fn display_identity(
     if display_identity_is_valid(&identity) {
         Ok(identity)
     } else {
-        Err(lockdock_display::Error::MissingIdentity.into())
+        Err(missing_identity())
     }
+}
+
+fn query_display_status() -> Result<DisplayStatus> {
+    let displays = lockdock_display::active_displays();
+    let dock_display = lockdock_display::dock_display()?;
+    let location_index = displays
+        .iter()
+        .position(|display| *display == dock_display)
+        .ok_or_else(|| Error::Operation("invalid display status".to_owned()))?;
+
+    Ok(DisplayStatus {
+        displays,
+        location_index,
+    })
+}
+
+fn missing_identity() -> Error {
+    Error::Operation("could not identify target display".to_owned())
 }
 
 fn find_active_display_by_identity(
@@ -311,7 +344,7 @@ fn reconcile_display_state(
             return Ok(());
         }
 
-        let status = lockdock_display::query_status()?;
+        let status = query_display_status()?;
         if status.displays[status.location_index] == locked_display {
             return Ok(());
         }
@@ -339,7 +372,7 @@ fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {
 
         thread::sleep(RELOCATION_RETRY_DELAY);
 
-        match lockdock_display::query_status() {
+        match query_display_status() {
             Ok(status) if status.displays[status.location_index] == display_id => return Ok(()),
             Ok(status) => {
                 let current = status.displays[status.location_index];

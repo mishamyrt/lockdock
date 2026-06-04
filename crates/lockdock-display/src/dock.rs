@@ -1,10 +1,9 @@
-use lockdock_geometry::{Point, Rect};
+use lockdock_geometry::Rect;
 use prefs::{Key, Preferences};
 
-use crate::displays::{active_displays, display_at_point, display_bounds, display_for_rect};
-use crate::error::{Error, Result};
+use crate::displays::display_for_rect;
 use crate::ffi;
-use crate::types::{DisplayId, Status};
+use crate::{DisplayId, Error, Result};
 
 const DOCK_BUNDLE_ID: &str = "com.apple.dock";
 const DOCK_ORIENTATION: Key<String> = Key::new("orientation");
@@ -14,20 +13,6 @@ pub enum DockOrientation {
     Bottom,
     Left,
     Right,
-}
-
-pub fn query_status() -> Result<Status> {
-    let displays = active_displays();
-    let dock_display = dock_display()?;
-    let location_index = displays
-        .iter()
-        .position(|display| *display == dock_display)
-        .ok_or(Error::InvalidStatus)?;
-
-    Ok(Status {
-        displays,
-        location_index,
-    })
 }
 
 #[must_use]
@@ -44,7 +29,7 @@ pub fn dock_orientation() -> DockOrientation {
     }
 }
 
-fn dock_display() -> Result<DisplayId> {
+pub fn dock_display() -> Result<DisplayId> {
     let Some(display_id) = capture_dock_display() else {
         return if unsafe { ffi::lockdock_display_is_accessibility_trusted() } {
             Err(Error::MissingDockDisplay)

@@ -13,7 +13,6 @@ lockdock-geometry.workspace = true
 prefs.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-lockdock-mouse.workspace = true
 [build-dependencies]
 cc.workspace = true
 

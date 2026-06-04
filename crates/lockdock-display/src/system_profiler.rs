@@ -3,8 +3,7 @@ use std::{collections::HashMap, io, process::Command};
 use serde_json::Value::{self};
 use thiserror::Error;
 
-use crate::error::{Error, Result};
-use crate::types::DisplayId;
+use crate::{DisplayId, Error, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DisplayInfo {

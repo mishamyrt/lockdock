@@ -2,9 +2,8 @@ use std::os::raw::c_uint;
 
 use lockdock_geometry::{Point, Rect};
 
-use crate::error::{Error, Result};
 use crate::ffi;
-use crate::types::DisplayId;
+use crate::{DisplayId, Error, Result};
 
 const MAX_DISPLAYS: usize = 32;
 const MAX_DISPLAYS_C: c_uint = 32;
@@ -28,7 +27,7 @@ pub fn display_bounds(display_id: DisplayId) -> Result<Rect> {
     }
 }
 
-pub(crate) fn display_at_point(point: Point) -> Option<DisplayId> {
+fn display_at_point(point: Point) -> Option<DisplayId> {
     active_displays().into_iter().find(|display_id| {
         display_bounds(*display_id)
             .map(|bounds| bounds.contains(point))
