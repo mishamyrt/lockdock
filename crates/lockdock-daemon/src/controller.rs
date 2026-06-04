@@ -1,10 +1,10 @@
 use std::thread;
 use std::time::Duration;
 
-use lockdock_display::{DisplayId, DockOrientation};
+use lockdock_display::DisplayId;
 use lockdock_ipc::{CommandResult, Request, Response};
 
-use crate::display_lock::{clear_lock_target, lock_target, set_lock_target};
+use crate::display_lock::{clear_lock_target, lock_target, refresh_dock_support, set_lock_target};
 use crate::display_state::{
     build_state, display_identity, find_active_display_by_identity, find_display_index,
     query_display_status, DisplaySnapshot,
@@ -111,7 +111,7 @@ fn disable_lock(preferences: &DisplayPreferences) -> Result<()> {
 }
 
 fn dock_is_supported() -> bool {
-    lockdock_display::dock_orientation() == DockOrientation::Bottom
+    refresh_dock_support()
 }
 
 fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {

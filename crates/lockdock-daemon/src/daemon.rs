@@ -4,11 +4,10 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use lockdock_display::DockOrientation;
 use lockdock_ipc::{CommandResult, Incoming, Response, Server};
 
 use crate::controller::{handle_request, reconcile_display_state};
-use crate::display_lock::{refresh_display_cache, shutdown};
+use crate::display_lock::{refresh_display_cache, refresh_dock_support, shutdown};
 use crate::display_state::DisplaySnapshot;
 use crate::preferences::DisplayPreferences;
 use crate::{Config, Result};
@@ -62,7 +61,7 @@ pub fn run(config: &Config) -> Result<()> {
 fn poll_display_changes(preferences: &DisplayPreferences, snapshot: &mut DisplaySnapshot) {
     let displays = lockdock_display::active_displays();
     if displays == snapshot.status.displays {
-        if lockdock_display::dock_orientation() != DockOrientation::Bottom {
+        if !refresh_dock_support() {
             if let Err(error) = reconcile_display_state(preferences, snapshot) {
                 eprintln!("Display reconcile failed: {error}");
             }

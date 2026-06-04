@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use lockdock_display::{DisplayId, DockOrientation};
@@ -16,6 +16,7 @@ struct DisplayBounds {
 }
 
 static LOCK_TARGET: AtomicU32 = AtomicU32::new(0);
+static DOCK_SUPPORTED: AtomicBool = AtomicBool::new(true);
 static DISPLAY_CACHE: OnceLock<Mutex<Vec<DisplayBounds>>> = OnceLock::new();
 static EVENT_TAP: OnceLock<Mutex<Option<EventTap>>> = OnceLock::new();
 
@@ -54,6 +55,12 @@ pub(crate) fn lock_target() -> Option<DisplayId> {
     }
 }
 
+pub(crate) fn refresh_dock_support() -> bool {
+    let supported = lockdock_display::dock_orientation() == DockOrientation::Bottom;
+    DOCK_SUPPORTED.store(supported, Ordering::SeqCst);
+    supported
+}
+
 pub(crate) fn shutdown() {
     clear_lock_target();
 }
@@ -78,7 +85,7 @@ fn should_suppress_event(event: MouseEvent) -> bool {
         return false;
     }
 
-    if lockdock_display::dock_orientation() != DockOrientation::Bottom {
+    if !DOCK_SUPPORTED.load(Ordering::SeqCst) {
         LOCK_TARGET.store(0, Ordering::SeqCst);
         return false;
     }
