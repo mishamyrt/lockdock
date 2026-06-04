@@ -3,15 +3,16 @@ use std::{collections::HashMap, io, process::Command};
 use serde_json::Value::{self};
 use thiserror::Error;
 
+use crate::error::{Error, Result};
 use crate::types::DisplayId;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DisplayInfo {
-    pub(crate) name: String,
-    pub(crate) is_builtin: bool,
-    pub(crate) vendor_number: u32,
-    pub(crate) model_number: u32,
-    pub(crate) serial_number: u32,
+pub struct DisplayInfo {
+    pub name: String,
+    pub is_builtin: bool,
+    pub vendor_number: u32,
+    pub model_number: u32,
+    pub serial_number: u32,
 }
 
 #[derive(Debug, Error)]
@@ -26,22 +27,22 @@ pub(crate) enum SystemProfilerError {
     CmdFailed(String),
 }
 
-type Result<T, E = SystemProfilerError> = std::result::Result<T, E>;
+type SystemProfilerResult<T> = std::result::Result<T, SystemProfilerError>;
 
 /// Get the display metadata from `system_profiler`.
-pub(crate) fn get_displays() -> Result<HashMap<DisplayId, DisplayInfo>> {
-    let data = get_sp_displays_data()?;
-    parse_displays_data(&data)
+pub fn load_display_info() -> Result<HashMap<DisplayId, DisplayInfo>> {
+    let data = get_sp_displays_data().map_err(|error| Error::Native(error.to_string()))?;
+    parse_displays_data(&data).map_err(|error| Error::Native(error.to_string()))
 }
 
 /// Parse the output of `system_profiler -json SPDisplaysDataType`.
-fn parse_displays_data(data: &[u8]) -> Result<HashMap<DisplayId, DisplayInfo>> {
+fn parse_displays_data(data: &[u8]) -> SystemProfilerResult<HashMap<DisplayId, DisplayInfo>> {
     let root: Value = serde_json::from_slice(data)?;
     Ok(parse_displays_value(&root))
 }
 
 /// Get the output of `system_profiler` for the `SPDisplaysDataType`.
-fn get_sp_displays_data() -> Result<Vec<u8>, SystemProfilerError> {
+fn get_sp_displays_data() -> SystemProfilerResult<Vec<u8>> {
     let output = Command::new("/usr/sbin/system_profiler")
         .args(["-json", "SPDisplaysDataType"])
         .output()?;
