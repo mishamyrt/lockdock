@@ -31,7 +31,7 @@ pub(crate) fn set_lock_target(display_id: DisplayId) -> Result<()> {
         );
     }
 
-    refresh_lock_display_cache();
+    refresh_display_cache();
     LOCK_TARGET.store(display_id, Ordering::SeqCst);
     Ok(())
 }
@@ -57,7 +57,7 @@ pub(crate) fn shutdown() {
     clear_lock_target();
 }
 
-fn refresh_lock_display_cache() {
+pub(crate) fn refresh_display_cache() {
     let cache = DISPLAY_CACHE.get_or_init(|| Mutex::new(Vec::new()));
     let mut next = Vec::new();
 

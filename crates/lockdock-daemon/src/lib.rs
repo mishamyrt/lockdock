@@ -1,11 +1,14 @@
 mod display_lock;
 mod relocation;
 
-use display_lock::{clear_lock_target, lock_target, set_lock_target, shutdown};
-use lockdock_display::{DisplayId, DisplayIdentity};
+use display_lock::{
+    clear_lock_target, lock_target, refresh_display_cache, set_lock_target, shutdown,
+};
+use lockdock_display::{DisplayId, DisplayIdentity, DisplayInfo, Status as DisplayStatus};
 use lockdock_ipc::{CommandResult, Incoming, Request, Response, Server, State};
 use prefs::{Key, Preferences};
 use relocation::relocate_display;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -13,7 +16,7 @@ use std::thread;
 use std::time::Duration;
 
 const BUNDLE_ID: &str = "co.myrt.lockdock";
-const DISPLAY_POLL_INTERVAL: Duration = Duration::from_secs(3);
+const DISPLAY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const RELOCATION_RETRY_ATTEMPTS: usize = 5;
 const RELOCATION_RETRY_DELAY: Duration = Duration::from_secs(1);
 
@@ -47,13 +50,41 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+struct DisplaySnapshot {
+    status: DisplayStatus,
+    info: HashMap<DisplayId, DisplayInfo>,
+}
+
+impl DisplaySnapshot {
+    fn load() -> Result<Self> {
+        Ok(Self {
+            status: lockdock_display::query_status()?,
+            info: lockdock_display::load_display_info()?,
+        })
+    }
+
+    fn refresh_status(&mut self) -> Result<()> {
+        self.status = lockdock_display::query_status()?;
+        Ok(())
+    }
+
+    fn refresh_info(&mut self) -> Result<()> {
+        self.info = lockdock_display::load_display_info()?;
+        Ok(())
+    }
+}
+
 pub fn run(config: &Config) -> Result<()> {
     let listener = Server::bind(&config.socket_path)?;
     write_pid_file(&config.pid_path)?;
     let preferences = DisplayPreferences::new()?;
+    let mut snapshot = DisplaySnapshot::load()?;
+    let (sender, receiver) = mpsc::channel();
 
-    if let Err(error) = reconcile_display_state(&preferences) {
+    if let Err(error) = reconcile_display_state(&preferences, &snapshot) {
         eprintln!("Display reconcile failed: {error}");
+    } else if let Err(error) = snapshot.refresh_status() {
+        eprintln!("Display status refresh failed: {error}");
     }
 
     println!(
@@ -61,7 +92,6 @@ pub fn run(config: &Config) -> Result<()> {
         listener.socket_path().display()
     );
 
-    let (sender, receiver) = mpsc::channel();
     thread::spawn(move || loop {
         match listener.accept_incoming() {
             Ok(incoming) => {
@@ -75,11 +105,9 @@ pub fn run(config: &Config) -> Result<()> {
 
     loop {
         match receiver.recv_timeout(DISPLAY_POLL_INTERVAL) {
-            Ok(incoming) => handle_incoming(incoming, &preferences),
+            Ok(incoming) => handle_incoming(incoming, &preferences, &mut snapshot),
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                if let Err(error) = reconcile_display_state(&preferences) {
-                    eprintln!("Display reconcile failed: {error}");
-                }
+                poll_display_changes(&preferences, &mut snapshot);
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
@@ -90,9 +118,35 @@ pub fn run(config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn handle_incoming(incoming: Incoming, preferences: &DisplayPreferences) {
+fn poll_display_changes(preferences: &DisplayPreferences, snapshot: &mut DisplaySnapshot) {
+    let displays = lockdock_display::active_displays();
+    if displays == snapshot.status.displays {
+        return;
+    }
+
+    refresh_display_cache();
+    if let Err(error) = snapshot.refresh_info() {
+        eprintln!("Display info refresh failed: {error}");
+    }
+    if let Err(error) = snapshot.refresh_status() {
+        eprintln!("Display status refresh failed: {error}");
+        return;
+    }
+
+    if let Err(error) = reconcile_display_state(preferences, snapshot) {
+        eprintln!("Display reconcile failed: {error}");
+    } else if let Err(error) = snapshot.refresh_status() {
+        eprintln!("Display status refresh failed: {error}");
+    }
+}
+
+fn handle_incoming(
+    incoming: Incoming,
+    preferences: &DisplayPreferences,
+    snapshot: &mut DisplaySnapshot,
+) {
     let response = match &incoming.request {
-        Ok(request) => handle_request(request, preferences),
+        Ok(request) => handle_request(request, preferences, snapshot),
         Err(error) => Response::Result(CommandResult {
             success: false,
             reason: Some(error.clone()),
@@ -104,13 +158,14 @@ fn handle_incoming(incoming: Incoming, preferences: &DisplayPreferences) {
     }
 }
 
-fn handle_request(request: &Request, preferences: &DisplayPreferences) -> Response {
+fn handle_request(
+    request: &Request,
+    preferences: &DisplayPreferences,
+    snapshot: &mut DisplaySnapshot,
+) -> Response {
     match request {
-        Request::GetState => match build_state() {
-            Ok(state) => Response::State(state),
-            Err(error) => failed(&error),
-        },
-        Request::SetState { target } => match apply_set_state(*target, preferences) {
+        Request::GetState => Response::State(build_state(snapshot)),
+        Request::SetState { target } => match apply_set_state(*target, preferences, snapshot) {
             Ok(()) => succeeded(),
             Err(error) => failed(&error),
         },
@@ -121,41 +176,46 @@ fn handle_request(request: &Request, preferences: &DisplayPreferences) -> Respon
     }
 }
 
-fn build_state() -> Result<State> {
-    let status = lockdock_display::query_status()?;
+fn build_state(snapshot: &DisplaySnapshot) -> State {
     let target = lock_target().and_then(|display_id| {
-        status
+        snapshot
+            .status
             .displays
             .iter()
             .position(|display| *display == display_id)
     });
 
-    Ok(State {
-        displays: status
+    State {
+        displays: snapshot
+            .status
             .displays
             .iter()
-            .map(|display_id| lockdock_display::display_label(*display_id))
+            .map(|display_id| display_label(*display_id, &snapshot.info))
             .collect(),
-        location: status.location_index,
+        location: snapshot.status.location_index,
         target,
-    })
+    }
 }
 
-fn apply_set_state(target_index: usize, preferences: &DisplayPreferences) -> Result<()> {
-    let status = lockdock_display::query_status()?;
-    let display_id = *status
-        .displays
-        .get(target_index)
-        .ok_or_else(|| Error::Operation(format!("Display index {target_index} is out of range")))?;
-    let identity = lockdock_display::display_identity(display_id)?;
+fn apply_set_state(
+    target_index: usize,
+    preferences: &DisplayPreferences,
+    snapshot: &mut DisplaySnapshot,
+) -> Result<()> {
+    let display_id =
+        *snapshot.status.displays.get(target_index).ok_or_else(|| {
+            Error::Operation(format!("Display index {target_index} is out of range"))
+        })?;
+    let identity = display_identity(display_id, &snapshot.info)?;
 
-    if status.displays[status.location_index] != display_id {
+    if snapshot.status.displays[snapshot.status.location_index] != display_id {
         clear_lock_target();
         relocate_display_until_current(display_id)?;
     }
 
     set_lock_target(display_id)?;
     preferences.save(&identity)?;
+    snapshot.refresh_status()?;
     Ok(())
 }
 
@@ -165,9 +225,88 @@ fn apply_unlock(preferences: &DisplayPreferences) -> Result<()> {
     Ok(())
 }
 
-fn reconcile_display_state(preferences: &DisplayPreferences) -> Result<()> {
+fn display_label(display_id: DisplayId, info: &HashMap<DisplayId, DisplayInfo>) -> String {
+    let Some(info) = info.get(&display_id) else {
+        return format!("Display-{display_id}");
+    };
+
+    if info.is_builtin {
+        return "Built-in Display".to_owned();
+    }
+
+    if info.name.is_empty() {
+        format!("Display-{display_id}")
+    } else {
+        info.name.clone()
+    }
+}
+
+fn display_identity(
+    display_id: DisplayId,
+    info: &HashMap<DisplayId, DisplayInfo>,
+) -> Result<DisplayIdentity> {
+    let Some(info) = info.get(&display_id) else {
+        return Err(lockdock_display::Error::MissingIdentity.into());
+    };
+
+    let identity = DisplayIdentity {
+        is_builtin: info.is_builtin,
+        vendor_number: info.vendor_number,
+        model_number: info.model_number,
+        serial_number: info.serial_number,
+        uuid: String::new(),
+    };
+
+    if display_identity_is_valid(&identity) {
+        Ok(identity)
+    } else {
+        Err(lockdock_display::Error::MissingIdentity.into())
+    }
+}
+
+fn find_active_display_by_identity(
+    identity: &DisplayIdentity,
+    snapshot: &DisplaySnapshot,
+) -> Option<DisplayId> {
+    if !display_identity_is_valid(identity) {
+        return None;
+    }
+
+    snapshot.status.displays.iter().copied().find(|display_id| {
+        display_identity(*display_id, &snapshot.info)
+            .map(|current| display_identity_fallback_matches(&current, identity))
+            .unwrap_or(false)
+    })
+}
+
+fn find_display_index(display_id: DisplayId, status: &DisplayStatus) -> Option<usize> {
+    status
+        .displays
+        .iter()
+        .position(|display| *display == display_id)
+}
+
+fn display_identity_is_valid(identity: &DisplayIdentity) -> bool {
+    !identity.uuid.is_empty()
+        || identity.is_builtin
+        || identity.vendor_number != 0
+        || identity.model_number != 0
+        || identity.serial_number != 0
+}
+
+fn display_identity_fallback_matches(left: &DisplayIdentity, right: &DisplayIdentity) -> bool {
+    left.is_builtin == right.is_builtin
+        && left.vendor_number == right.vendor_number
+        && left.model_number == right.model_number
+        && left.serial_number == right.serial_number
+}
+
+fn reconcile_display_state(
+    preferences: &DisplayPreferences,
+    snapshot: &DisplaySnapshot,
+) -> Result<()> {
     if let Some(locked_display) = lock_target() {
-        if lockdock_display::find_display_index(locked_display).is_none() {
+        if find_display_index(locked_display, &snapshot.status).is_none() {
             clear_lock_target();
             return Ok(());
         }
@@ -183,8 +322,7 @@ fn reconcile_display_state(preferences: &DisplayPreferences) -> Result<()> {
     let Some(identity) = preferences.load()? else {
         return Ok(());
     };
-    let Some(preferred_display) = lockdock_display::find_active_display_by_identity(&identity)
-    else {
+    let Some(preferred_display) = find_active_display_by_identity(&identity, snapshot) else {
         return Ok(());
     };
 
