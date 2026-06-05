@@ -2,6 +2,7 @@ mod controller;
 mod daemon;
 mod display_lock;
 mod display_state;
+mod logging;
 mod preferences;
 mod relocation;
 

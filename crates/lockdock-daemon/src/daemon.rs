@@ -10,7 +10,7 @@ use crate::controller::{handle_request, reconcile_display_state};
 use crate::display_lock::{refresh_display_cache, refresh_dock_support, shutdown};
 use crate::display_state::DisplaySnapshot;
 use crate::preferences::DisplayPreferences;
-use crate::{Config, Result};
+use crate::{log_error, log_info, Config, Result};
 
 const DISPLAY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -22,12 +22,12 @@ pub fn run(config: &Config) -> Result<()> {
     let (sender, receiver) = mpsc::channel();
 
     if let Err(error) = reconcile_display_state(&preferences, &snapshot) {
-        eprintln!("Display reconcile failed: {error}");
+        log_error!("Display reconcile failed: {error}");
     } else if let Err(error) = snapshot.refresh_status() {
-        eprintln!("Display status refresh failed: {error}");
+        log_error!("Display status refresh failed: {error}");
     }
 
-    println!(
+    log_info!(
         "lockdock daemon listening on {}",
         listener.socket_path().display()
     );
@@ -39,7 +39,7 @@ pub fn run(config: &Config) -> Result<()> {
                     break;
                 }
             }
-            Err(error) => eprintln!("IPC accept failed: {error}"),
+            Err(error) => log_error!("IPC accept failed: {error}"),
         }
     });
 
@@ -63,7 +63,7 @@ fn poll_display_changes(preferences: &DisplayPreferences, snapshot: &mut Display
     if displays == snapshot.status.displays {
         if !refresh_dock_support() {
             if let Err(error) = reconcile_display_state(preferences, snapshot) {
-                eprintln!("Display reconcile failed: {error}");
+                log_error!("Display reconcile failed: {error}");
             }
         }
         return;
@@ -71,17 +71,17 @@ fn poll_display_changes(preferences: &DisplayPreferences, snapshot: &mut Display
 
     refresh_display_cache();
     if let Err(error) = snapshot.refresh_info() {
-        eprintln!("Display info refresh failed: {error}");
+        log_error!("Display info refresh failed: {error}");
     }
     if let Err(error) = snapshot.refresh_status() {
-        eprintln!("Display status refresh failed: {error}");
+        log_error!("Display status refresh failed: {error}");
         return;
     }
 
     if let Err(error) = reconcile_display_state(preferences, snapshot) {
-        eprintln!("Display reconcile failed: {error}");
+        log_error!("Display reconcile failed: {error}");
     } else if let Err(error) = snapshot.refresh_status() {
-        eprintln!("Display status refresh failed: {error}");
+        log_error!("Display status refresh failed: {error}");
     }
 }
 
@@ -99,7 +99,7 @@ fn handle_incoming(
     };
 
     if let Err(error) = incoming.respond(&response) {
-        eprintln!("IPC response failed: {error}");
+        log_error!("IPC response failed: {error}");
     }
 }
 
