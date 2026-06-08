@@ -1,72 +1,34 @@
 VERSION = 0.4.2
 
-SRC_DIR = src
-BUILD_DIR = build
-ARTIFACTS_DIR = $(BUILD_DIR)/artifacts
 PREFIX = ${HOME}/.local/bin
 THIRDPARTY_DIR = thirdparty
-TARGET = $(BUILD_DIR)/lockdock
+TARGET = target/release/lockdock
 
-SRCS = \
-	$(SRC_DIR)/main.c \
-	$(SRC_DIR)/lockdock_daemon.c \
-	$(SRC_DIR)/lockdock_display.c \
-	$(SRC_DIR)/lockdock_locker.c \
-	$(SRC_DIR)/lockdock_platform.c \
-	$(SRC_DIR)/lockdock_preferences.c \
-	$(SRC_DIR)/lockdock_runtime.c \
-	$(SRC_DIR)/lockdock_launchagent.c \
-	$(SRC_DIR)/lockdock_ipc.c
-OBJS = $(patsubst $(SRC_DIR)/%.c,$(ARTIFACTS_DIR)/%.o,$(SRCS))
-
-CC = clang
-CLANG_TIDY ?= clang-tidy
-OPTFLAGS ?= -O3 -flto
-CFLAGS = \
-	-std=c11 \
-	-Wall -Wextra \
-	-I$(THIRDPARTY_DIR) \
-	-DLOCKDOCK_VERSION="\"$(VERSION)\""
-FRAMEWORKS = \
-	-framework CoreGraphics \
-	-framework ApplicationServices \
-	-framework ColorSync \
-	-framework CoreFoundation
-
-.PHONY: all clean fmt install publish tidy
+.PHONY: all clean fmt lint test install publish
 
 all: $(TARGET)
 
-$(ARTIFACTS_DIR):
-	mkdir -p $(ARTIFACTS_DIR)
-
-$(ARTIFACTS_DIR)/%.o: $(SRC_DIR)/%.c | $(ARTIFACTS_DIR)
-	$(CC) $(CFLAGS) $(OPTFLAGS) -c -o $@ $<
-
-$(TARGET): Cargo.toml Cargo.lock $(shell find crates -type f) | $(BUILD_DIR)
+$(TARGET): Cargo.toml Cargo.lock $(shell find crates -type f)
 	cargo build --release -p lockdock
-	cp target/release/lockdock $@
-
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
 
 clean:
-	rm -rf $(BUILD_DIR) target
+	rm -rf target
 
 fmt:
 	cargo fmt
-	find src/ tests/ \
+	find crates/ \
 		\( -iname '*.h' -o -iname '*.c' \) \
 		-not -path "*/thirdparty/*" \
 		| xargs clang-format -i
 
-tidy:
+lint:
 	cargo clippy --workspace --all-targets -- -D warnings
-	$(CLANG_TIDY) -quiet $(SRCS) -- $(CFLAGS)
+
+test:
+	cargo test --workspace --all-targets
 
 install: $(TARGET)
-	mkdir -p $(PREFIX)
-	cp $^ $(PREFIX)
+	cp $(TARGET) $(PREFIX)/lockdock
 
 publish:
 	git add Makefile
@@ -79,5 +41,3 @@ publish:
 	git tag -a "v${VERSION}" -m "release v${VERSION}"
 	git push
 	git push --tags
-
-include tests/build.mk

@@ -69,7 +69,7 @@ To update Lockdock, simply run this script again.
 
 ### From sources
 
-To build Lockdock, you only need the clang compiler, which is pre-installed on macOS by default.
+To build Lockdock, you only need the Rust compiler and Cargo.
 It can be built on both Intel and Apple Silicon.
 
 Clone the repository, open it in your terminal, and run the following commands:
