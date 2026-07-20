@@ -8,7 +8,7 @@ pub use protocol::{
     parse_request, parse_response, serialize_request, serialize_response, CommandResult, Request,
     Response, State, MAX_DISPLAYS,
 };
-pub use server::{Event, Incoming, Server};
+pub use server::{Incoming, Server};
 pub use transport::MAX_MESSAGE_SIZE;
 
 #[derive(Debug, thiserror::Error)]

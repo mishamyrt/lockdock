@@ -23,7 +23,6 @@ pub(crate) struct DisplayIdentity {
     pub(crate) vendor_number: u32,
     pub(crate) model_number: u32,
     pub(crate) serial_number: u32,
-    pub(crate) uuid: String,
 }
 
 impl DisplaySnapshot {
@@ -95,7 +94,6 @@ pub(crate) fn display_identity(
         vendor_number: info.vendor_number,
         model_number: info.model_number,
         serial_number: info.serial_number,
-        uuid: String::new(),
     };
 
     if display_identity_is_valid(&identity) {
@@ -133,7 +131,7 @@ pub(crate) fn find_active_display_by_identity(
 
     snapshot.status.displays.iter().copied().find(|display_id| {
         display_identity(*display_id, &snapshot.info)
-            .map(|current| display_identity_fallback_matches(&current, identity))
+            .map(|current| current == *identity)
             .unwrap_or(false)
     })
 }
@@ -146,16 +144,8 @@ pub(crate) fn find_display_index(display_id: DisplayId, status: &DisplayStatus) 
 }
 
 pub(crate) fn display_identity_is_valid(identity: &DisplayIdentity) -> bool {
-    !identity.uuid.is_empty()
-        || identity.is_builtin
+    identity.is_builtin
         || identity.vendor_number != 0
         || identity.model_number != 0
         || identity.serial_number != 0
-}
-
-fn display_identity_fallback_matches(left: &DisplayIdentity, right: &DisplayIdentity) -> bool {
-    left.is_builtin == right.is_builtin
-        && left.vendor_number == right.vendor_number
-        && left.model_number == right.model_number
-        && left.serial_number == right.serial_number
 }

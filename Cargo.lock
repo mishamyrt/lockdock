@@ -211,8 +211,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "libc"
+version = "0.2.186"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+
+[[package]]
 name = "lockdock"
-version = "0.4.2"
+version = "0.4.4"
 dependencies = [
  "clap",
  "lockdock-daemon",
@@ -223,8 +229,9 @@ dependencies = [
 
 [[package]]
 name = "lockdock-daemon"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
+ "libc",
  "lockdock-display",
  "lockdock-geometry",
  "lockdock-ipc",
@@ -235,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "lockdock-display"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "cc",
  "lockdock-geometry",
@@ -246,11 +253,11 @@ dependencies = [
 
 [[package]]
 name = "lockdock-geometry"
-version = "0.1.0"
+version = "0.0.0"
 
 [[package]]
 name = "lockdock-ipc"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -259,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "lockdock-mouse"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "cc",
  "lockdock-geometry",

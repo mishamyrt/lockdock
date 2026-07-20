@@ -41,6 +41,14 @@ pub fn dock_display() -> Result<DisplayId> {
     Ok(display_id)
 }
 
+/// Reports whether a shield window (Mission Control, Exposé or Launchpad)
+/// currently covers the given display. While one is up, the Dock cannot be
+/// summoned to that display by pushing at its edge.
+#[must_use]
+pub fn dock_overlay_active(display_id: DisplayId) -> bool {
+    unsafe { ffi::lockdock_display_dock_overlay_active(display_id) }
+}
+
 #[must_use]
 pub fn dock_window_display() -> Option<DisplayId> {
     let mut bounds = Rect::default();

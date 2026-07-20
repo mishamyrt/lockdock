@@ -7,6 +7,8 @@
 
 // Maybe 16 is enough, but we'll be safe.
 #define LOCKDOCK_DISPLAY_MAX_WINDOWS 256
+// A window covering this fraction of a display counts as display-covering.
+#define LOCKDOCK_DISPLAY_COVERING_RATIO 0.9
 
 static LockDockDisplayRect lockdock_display_rect_from_cg(CGRect rect) {
   LockDockDisplayRect out = {
@@ -76,13 +78,44 @@ static bool lockdock_display_copy_window_bounds(CFDictionaryRef window,
            !CGRectIsNull(*bounds_out) && !CGRectIsEmpty(*bounds_out);
 }
 
+static int lockdock_display_copy_window_layer(CFDictionaryRef window) {
+    CFNumberRef layer_number =
+        (CFNumberRef)CFDictionaryGetValue(window, kCGWindowLayer);
+    int layer = INT_MIN;
+
+    if (layer_number != NULL && CFGetTypeID(layer_number) == CFNumberGetTypeID()) {
+        CFNumberGetValue(layer_number, kCFNumberIntType, &layer);
+    }
+
+    return layer;
+}
+
+static double lockdock_display_intersection_area(CGRect left, CGRect right) {
+    CGRect intersection = CGRectIntersection(left, right);
+
+    if (CGRectIsNull(intersection) || CGRectIsEmpty(intersection)) {
+        return 0.0;
+    }
+
+    return intersection.size.width * intersection.size.height;
+}
+
+static int lockdock_display_dock_window_level(void) {
+    return (int)CGWindowLevelForKey(kCGDockWindowLevelKey);
+}
+
+// The Dock bar window is the Dock-owned window sitting exactly at
+// kCGDockWindowLevel. Everything else the Dock process may own (Mission
+// Control and Expose backdrops on older macOS, wallpaper, hot corners) lives
+// on other levels. On modern macOS the bar window spans its whole display, on
+// older versions it is a thin strip; either way the level identifies it.
 static bool lockdock_display_copy_dock_window_bounds_for_option(
     CGWindowListOption option,
     LockDockDisplayRect *rect_out) {
     CFArrayRef windows = CGWindowListCopyWindowInfo(option, kCGNullWindowID);
     CGRect best_bounds = CGRectZero;
     double best_area = 0;
-    int best_layer = INT_MIN;
+    int dock_level = lockdock_display_dock_window_level();
 
     if (windows == NULL) {
         return false;
@@ -92,25 +125,18 @@ static bool lockdock_display_copy_dock_window_bounds_for_option(
         CFDictionaryRef window =
             (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
         CGRect bounds = CGRectZero;
-        int layer = INT_MIN;
-        CFNumberRef layer_number;
         double area;
 
         if (window == NULL || CFGetTypeID(window) != CFDictionaryGetTypeID() ||
             !lockdock_display_owner_is_dock(window) ||
             lockdock_display_window_is_wallpaper(window) ||
-            !lockdock_display_copy_window_bounds(window, &bounds)) {
+            !lockdock_display_copy_window_bounds(window, &bounds) ||
+            lockdock_display_copy_window_layer(window) != dock_level) {
             continue;
         }
 
-        layer_number = (CFNumberRef)CFDictionaryGetValue(window, kCGWindowLayer);
-        if (layer_number != NULL && CFGetTypeID(layer_number) == CFNumberGetTypeID()) {
-            CFNumberGetValue(layer_number, kCFNumberIntType, &layer);
-        }
-
         area = bounds.size.width * bounds.size.height;
-        if (layer > best_layer || (layer == best_layer && area > best_area)) {
-            best_layer = layer;
+        if (area > best_area) {
             best_area = area;
             best_bounds = bounds;
         }
@@ -251,4 +277,60 @@ bool lockdock_display_copy_accessibility_dock_window_bounds(
 
     *rect_out = lockdock_display_rect_from_cg(best_bounds);
     return true;
+}
+
+// While Mission Control or Expose is up, a shield window covers each display
+// at a level above normal windows but below the Dock (WindowManager's
+// "ExposeShieldWindow" on modern macOS, the Dock's own backdrops on older
+// versions). Pushing the cursor at a display edge cannot summon the Dock
+// until it goes away.
+bool lockdock_display_dock_overlay_active(uint32_t display_id) {
+    CGRect display;
+    double display_area;
+    CFArrayRef windows;
+    int dock_level = lockdock_display_dock_window_level();
+    bool active = false;
+
+    if (display_id == 0) {
+        return false;
+    }
+
+    display = CGDisplayBounds(display_id);
+    if (CGRectIsNull(display) || CGRectIsEmpty(display)) {
+        return false;
+    }
+    display_area = display.size.width * display.size.height;
+
+    windows = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID);
+    if (windows == NULL) {
+        return false;
+    }
+
+    for (CFIndex i = 0; i < CFArrayGetCount(windows); i++) {
+        CFDictionaryRef window =
+            (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
+        CGRect bounds = CGRectZero;
+        int layer;
+
+        if (window == NULL || CFGetTypeID(window) != CFDictionaryGetTypeID() ||
+            !lockdock_display_copy_window_bounds(window, &bounds)) {
+            continue;
+        }
+
+        layer = lockdock_display_copy_window_layer(window);
+        if (layer <= 0 || layer >= dock_level) {
+            continue;
+        }
+
+        if (lockdock_display_intersection_area(bounds, display) >=
+            LOCKDOCK_DISPLAY_COVERING_RATIO * display_area) {
+            active = true;
+            break;
+        }
+    }
+
+    CFRelease(windows);
+    return active;
 }

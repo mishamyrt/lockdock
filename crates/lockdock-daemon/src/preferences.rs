@@ -5,7 +5,8 @@ use crate::Result;
 
 const BUNDLE_ID: &str = "co.myrt.lockdock";
 
-const PREFERRED_UUID: Key<String> = Key::new("preferredDisplayUUID");
+// Legacy key from the pre-Rust daemon; only removed, never read or written.
+const LEGACY_UUID: Key<String> = Key::new("preferredDisplayUUID");
 const PREFERRED_BUILTIN: Key<bool> = Key::new("preferredDisplayBuiltin");
 const PREFERRED_VENDOR: Key<i64> = Key::new("preferredDisplayVendor");
 const PREFERRED_MODEL: Key<i64> = Key::new("preferredDisplayModel");
@@ -23,7 +24,7 @@ impl DisplayPreferences {
     }
 
     pub(crate) fn save(&self, identity: &DisplayIdentity) -> Result<()> {
-        self.preferences.set(PREFERRED_UUID, &identity.uuid)?;
+        self.preferences.remove(LEGACY_UUID)?;
         self.preferences
             .set(PREFERRED_BUILTIN, &identity.is_builtin)?;
         self.preferences
@@ -36,7 +37,6 @@ impl DisplayPreferences {
     }
 
     pub(crate) fn load(&self) -> Result<Option<DisplayIdentity>> {
-        let uuid = self.preferences.get(PREFERRED_UUID)?.unwrap_or_default();
         let is_builtin = self.preferences.get(PREFERRED_BUILTIN)?.unwrap_or(false);
         let vendor_number = self.preferences.get(PREFERRED_VENDOR)?.unwrap_or(0);
         let model_number = self.preferences.get(PREFERRED_MODEL)?.unwrap_or(0);
@@ -47,7 +47,6 @@ impl DisplayPreferences {
             vendor_number: u32::try_from(vendor_number).unwrap_or(0),
             model_number: u32::try_from(model_number).unwrap_or(0),
             serial_number: u32::try_from(serial_number).unwrap_or(0),
-            uuid,
         };
 
         if display_identity_is_valid(&identity) {
@@ -58,7 +57,7 @@ impl DisplayPreferences {
     }
 
     pub(crate) fn clear(&self) -> Result<()> {
-        self.preferences.remove(PREFERRED_UUID)?;
+        self.preferences.remove(LEGACY_UUID)?;
         self.preferences.remove(PREFERRED_BUILTIN)?;
         self.preferences.remove(PREFERRED_VENDOR)?;
         self.preferences.remove(PREFERRED_MODEL)?;

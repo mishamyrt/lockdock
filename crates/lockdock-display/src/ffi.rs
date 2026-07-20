@@ -13,4 +13,5 @@ extern "C" {
     pub(crate) fn lockdock_display_copy_accessibility_dock_window_bounds(
         rect_out: *mut Rect,
     ) -> bool;
+    pub(crate) fn lockdock_display_dock_overlay_active(display_id: c_uint) -> bool;
 }

@@ -13,8 +13,9 @@ use crate::preferences::DisplayPreferences;
 use crate::relocation::relocate_display;
 use crate::{Error, Result};
 
-const RELOCATION_RETRY_ATTEMPTS: usize = 5;
-const RELOCATION_RETRY_DELAY: Duration = Duration::from_secs(1);
+const RELOCATION_RETRY_ATTEMPTS: usize = 3;
+const RELOCATION_RETRY_DELAY: Duration = Duration::from_millis(500);
+const RELOCATION_SETTLE_DELAY: Duration = Duration::from_millis(250);
 
 pub(crate) fn handle_request(
     request: &Request,
@@ -45,9 +46,9 @@ fn apply_set_state(
         })?;
 
     if !dock_is_supported() {
-        disable_lock(preferences)?;
-        snapshot.refresh_status()?;
-        return Ok(());
+        return Err(Error::Operation(
+            "Dock orientation is not supported; only bottom placement can be locked".to_owned(),
+        ));
     }
 
     let identity = display_identity(display_id, &snapshot.info)?;
@@ -99,9 +100,33 @@ pub(crate) fn reconcile_display_state(
         return Ok(());
     };
 
-    relocate_display_until_current(preferred_display)?;
+    let status = query_display_status()?;
+    if status.displays[status.location_index] != preferred_display {
+        relocate_display_until_current(preferred_display)?;
+    }
     set_lock_target(preferred_display)?;
     Ok(())
+}
+
+/// Reports whether the Dock is away from where the lock (or the saved
+/// preference, when the lock is not yet restored) wants it.
+pub(crate) fn dock_needs_healing(
+    preferences: &DisplayPreferences,
+    snapshot: &DisplaySnapshot,
+) -> bool {
+    match lock_target() {
+        Some(target) => lockdock_display::dock_window_display()
+            .is_some_and(|current| current != target),
+        None => preferred_active_display(preferences, snapshot).is_some(),
+    }
+}
+
+fn preferred_active_display(
+    preferences: &DisplayPreferences,
+    snapshot: &DisplaySnapshot,
+) -> Option<DisplayId> {
+    let identity = preferences.load().ok().flatten()?;
+    find_active_display_by_identity(&identity, snapshot)
 }
 
 fn disable_lock(preferences: &DisplayPreferences) -> Result<()> {
@@ -117,10 +142,23 @@ fn dock_is_supported() -> bool {
 fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {
     let mut last_error = None;
 
-    for _ in 0..RELOCATION_RETRY_ATTEMPTS {
-        relocate_display(display_id)?;
+    for attempt in 0..RELOCATION_RETRY_ATTEMPTS {
+        if attempt > 0 {
+            thread::sleep(RELOCATION_RETRY_DELAY);
+        }
 
-        thread::sleep(RELOCATION_RETRY_DELAY);
+        match relocate_display(display_id) {
+            Ok(()) => {}
+            // The user grabbed the cursor or an overlay covers the display;
+            // stop fighting and let the poll-driven reconcile retry later.
+            Err(error @ Error::RelocationInterrupted(_)) => return Err(error),
+            Err(error) => {
+                last_error = Some(error.to_string());
+                continue;
+            }
+        }
+
+        thread::sleep(RELOCATION_SETTLE_DELAY);
 
         match query_display_status() {
             Ok(status) if status.displays[status.location_index] == display_id => return Ok(()),

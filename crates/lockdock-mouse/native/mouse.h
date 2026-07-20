@@ -21,7 +21,6 @@ void *lockdock_mouse_event_source_create(void);
 void lockdock_mouse_event_source_set_suppression_interval(void *source,
                                                           double interval);
 void lockdock_mouse_release(void *object);
-bool lockdock_mouse_set_cursor_association(bool associated);
 void lockdock_mouse_warp(LockDockMousePoint point);
 void lockdock_mouse_post_moved(void *source, LockDockMousePoint point);
 void lockdock_mouse_post_delta(void *source,
