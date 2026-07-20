@@ -2,19 +2,24 @@ use std::thread;
 use std::time::Duration;
 
 use lockdock_display::{DisplayId, DockOrientation};
-use lockdock_geometry::Point;
+use lockdock_geometry::{Point, Rect};
 use lockdock_mouse::EventSource;
 
 use crate::{Error, Result};
 
-const RELOCATION_NUDGE_ATTEMPTS: usize = 60;
+const RELOCATION_NUDGE_ATTEMPTS: usize = 40;
 const RELOCATION_PROBE_INTERVAL: usize = 3;
-const RELOCATION_NUDGE_DELAY: Duration = Duration::from_micros(15_000);
-const RELOCATION_VERIFY_ATTEMPTS: usize = 8;
-const RELOCATION_VERIFY_DELAY: Duration = Duration::from_micros(10_000);
-const RELOCATION_APPROACH_DELAY: Duration = Duration::from_micros(30_000);
+const RELOCATION_NUDGE_DELAY: Duration = Duration::from_millis(15);
+const RELOCATION_VERIFY_ATTEMPTS: usize = 5;
+const RELOCATION_VERIFY_DELAY: Duration = Duration::from_millis(10);
+const RELOCATION_APPROACH_DELAY: Duration = Duration::from_millis(30);
 const RELOCATION_EDGE_MOVE_STEPS: usize = 10;
-const RELOCATION_EDGE_MOVE_DELAY: Duration = Duration::from_micros(15_000);
+const RELOCATION_EDGE_MOVE_DELAY: Duration = Duration::from_millis(15);
+/// Distance above the bottom edge where the smooth cursor approach starts.
+const RELOCATION_APPROACH_OFFSET: f64 = 10.0;
+/// How far the cursor may drift from where relocation placed it before the
+/// movement is attributed to the user and the relocation is aborted.
+const RELOCATION_USER_MOVE_TOLERANCE: f64 = 24.0;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct SafeSegment {
@@ -24,6 +29,12 @@ struct SafeSegment {
     center: f64,
 }
 
+enum RelocationOutcome {
+    Relocated,
+    Interrupted,
+    TimedOut,
+}
+
 pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
     let bounds = lockdock_display::display_bounds(display_id)?;
     let orientation = lockdock_display::dock_orientation();
@@ -31,15 +42,24 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
         return Ok(());
     }
 
+    if lockdock_display::dock_overlay_active(display_id) {
+        return Err(Error::RelocationInterrupted(
+            "a Dock overlay (Mission Control, Exposé or Launchpad) is covering the display"
+                .to_owned(),
+        ));
+    }
+
     let old_position = current_mouse_location();
     let source = EventSource::new();
-    let safe_segment = find_safe_edge_segment(display_id);
-    let edge_offset = 1.0;
+    let edge_min = bounds.x;
+    let edge_max = bounds.x + bounds.width;
     let edge_y = bounds.y + bounds.height;
-    let trigger_x = choose_trigger_coordinate(display_id, safe_segment);
+    let overlaps = collect_edge_overlaps(display_id, edge_min, edge_max, edge_y);
+    let safe_segment = find_safe_edge_segment(edge_min, edge_max, &overlaps);
+    let trigger_x = choose_trigger_coordinate(bounds, &overlaps, safe_segment);
     let approach = Point {
         x: trigger_x,
-        y: edge_y - edge_offset,
+        y: edge_y - RELOCATION_APPROACH_OFFSET,
     };
     let edge = Point {
         x: trigger_x,
@@ -52,40 +72,33 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
 
     move_cursor(source.as_ref(), approach);
     thread::sleep(RELOCATION_APPROACH_DELAY);
-    smooth_move(source.as_ref(), approach, edge, RELOCATION_EDGE_MOVE_STEPS);
 
-    let relocated = wait_for_dock_relocation(source.as_ref(), edge, display_id);
-
-    move_cursor(source.as_ref(), old_position);
-
-    if relocated {
-        Ok(())
+    let outcome = if cursor_taken_by_user(approach) {
+        RelocationOutcome::Interrupted
+    } else if smooth_move(source.as_ref(), approach, edge, RELOCATION_EDGE_MOVE_STEPS) {
+        wait_for_dock_relocation(source.as_ref(), edge, display_id)
     } else {
-        Err(Error::Operation(format!(
-            "Could not move Dock to display {display_id}"
-        )))
+        RelocationOutcome::Interrupted
+    };
+
+    match outcome {
+        RelocationOutcome::Relocated => {
+            restore_cursor(source.as_ref(), edge, old_position);
+            Ok(())
+        }
+        RelocationOutcome::Interrupted => Err(Error::RelocationInterrupted(
+            "the cursor was moved by the user".to_owned(),
+        )),
+        RelocationOutcome::TimedOut => {
+            restore_cursor(source.as_ref(), edge, old_position);
+            Err(Error::Operation(format!(
+                "Could not move Dock to display {display_id}"
+            )))
+        }
     }
 }
 
-fn find_safe_edge_segment(target_id: DisplayId) -> SafeSegment {
-    let Ok(target) = lockdock_display::display_bounds(target_id) else {
-        return SafeSegment::default();
-    };
-    let edge_min = target.x;
-    let edge_max = target.x + target.width;
-    let edge_cross_pos = target.y + target.height;
-    let mut overlaps = collect_edge_overlaps(target_id, edge_min, edge_max, edge_cross_pos);
-    overlaps.sort_by(|left, right| {
-        left.start
-            .partial_cmp(&right.start)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| {
-                left.end
-                    .partial_cmp(&right.end)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-    });
-
+fn find_safe_edge_segment(edge_min: f64, edge_max: f64, overlaps: &[SafeSegment]) -> SafeSegment {
     let mut best = SafeSegment::default();
     let mut cursor = edge_min;
     for overlap in overlaps {
@@ -98,22 +111,6 @@ fn find_safe_edge_segment(target_id: DisplayId) -> SafeSegment {
     }
     update_best_segment(&mut best, cursor, edge_max);
     best
-}
-
-fn edge_point_has_contact(target_id: DisplayId, point_along_edge: f64) -> bool {
-    let Ok(target) = lockdock_display::display_bounds(target_id) else {
-        return false;
-    };
-    let edge_min = target.x;
-    let edge_max = target.x + target.width;
-    let edge_cross_pos = target.y + target.height;
-    if point_along_edge < edge_min || point_along_edge > edge_max {
-        return false;
-    }
-
-    collect_edge_overlaps(target_id, edge_min, edge_max, edge_cross_pos)
-        .iter()
-        .any(|overlap| point_along_edge >= overlap.start && point_along_edge <= overlap.end)
 }
 
 fn collect_edge_overlaps(
@@ -152,6 +149,17 @@ fn collect_edge_overlaps(
         }
     }
 
+    overlaps.sort_by(|left, right| {
+        left.start
+            .partial_cmp(&right.start)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                left.end
+                    .partial_cmp(&right.end)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+
     overlaps
 }
 
@@ -170,13 +178,17 @@ fn update_best_segment(best: &mut SafeSegment, start: f64, end: f64) {
     }
 }
 
-fn choose_trigger_coordinate(target_display_id: DisplayId, safe_segment: SafeSegment) -> f64 {
-    let Ok(bounds) = lockdock_display::display_bounds(target_display_id) else {
-        return safe_segment.center;
-    };
+fn choose_trigger_coordinate(
+    bounds: Rect,
+    overlaps: &[SafeSegment],
+    safe_segment: SafeSegment,
+) -> f64 {
     let preferred = (bounds.x + bounds.width - 10.0).max(bounds.x);
+    let preferred_has_contact = overlaps
+        .iter()
+        .any(|overlap| preferred >= overlap.start && preferred <= overlap.end);
 
-    if edge_point_has_contact(target_display_id, preferred) {
+    if preferred_has_contact {
         safe_segment.center
     } else {
         preferred
@@ -187,26 +199,30 @@ fn wait_for_dock_relocation(
     source: Option<&EventSource>,
     edge: Point,
     display_id: DisplayId,
-) -> bool {
+) -> RelocationOutcome {
     for attempt in 0..RELOCATION_NUDGE_ATTEMPTS {
         if let Some(source) = source {
             post_edge_nudge(source, edge);
         }
         thread::sleep(RELOCATION_NUDGE_DELAY);
 
+        if cursor_taken_by_user(edge) {
+            return RelocationOutcome::Interrupted;
+        }
+
         if (attempt + 1) % RELOCATION_PROBE_INTERVAL == 0 && dock_probe_matches(display_id) {
-            return true;
+            return RelocationOutcome::Relocated;
         }
     }
 
     for _ in 0..RELOCATION_VERIFY_ATTEMPTS {
         if dock_probe_matches(display_id) {
-            return true;
+            return RelocationOutcome::Relocated;
         }
         thread::sleep(RELOCATION_VERIFY_DELAY);
     }
 
-    false
+    RelocationOutcome::TimedOut
 }
 
 fn dock_probe_matches(display_id: DisplayId) -> bool {
@@ -217,6 +233,12 @@ fn current_mouse_location() -> Point {
     lockdock_mouse::current_location().unwrap_or_default()
 }
 
+fn cursor_taken_by_user(expected: Point) -> bool {
+    let current = current_mouse_location();
+    (current.x - expected.x).abs() > RELOCATION_USER_MOVE_TOLERANCE
+        || (current.y - expected.y).abs() > RELOCATION_USER_MOVE_TOLERANCE
+}
+
 fn move_cursor(source: Option<&EventSource>, point: Point) {
     lockdock_mouse::warp(point);
     if let Some(source) = source {
@@ -224,7 +246,18 @@ fn move_cursor(source: Option<&EventSource>, point: Point) {
     }
 }
 
-fn smooth_move(source: Option<&EventSource>, from: Point, to: Point, steps: usize) {
+/// Returns the cursor to where it was before relocation, unless the user has
+/// already taken it somewhere else.
+fn restore_cursor(source: Option<&EventSource>, expected: Point, old_position: Point) {
+    if cursor_taken_by_user(expected) {
+        return;
+    }
+    move_cursor(source, old_position);
+}
+
+/// Walks the cursor from `from` to `to` with posted events; returns `false`
+/// when the user grabs the cursor mid-way.
+fn smooth_move(source: Option<&EventSource>, from: Point, to: Point, steps: usize) -> bool {
     for step in 1..=steps {
         let step = u32::try_from(step).unwrap_or(u32::MAX);
         let steps = u32::try_from(steps).unwrap_or(u32::MAX);
@@ -233,12 +266,17 @@ fn smooth_move(source: Option<&EventSource>, from: Point, to: Point, steps: usiz
             x: from.x + (to.x - from.x) * progress,
             y: from.y + (to.y - from.y) * progress,
         };
-        lockdock_mouse::warp(point);
-        if let Some(source) = source {
-            source.post_moved(point);
+        match source {
+            Some(source) => source.post_moved(point),
+            None => lockdock_mouse::warp(point),
         }
         thread::sleep(RELOCATION_EDGE_MOVE_DELAY);
+
+        if cursor_taken_by_user(point) {
+            return false;
+        }
     }
+    true
 }
 
 fn post_edge_nudge(source: &EventSource, point: Point) {

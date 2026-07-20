@@ -4,9 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static VERBOSE_LOGGING: AtomicBool = AtomicBool::new(false);
 
-// pub(crate) fn set_verbose(enabled: bool) {
-//     VERBOSE_LOGGING.store(enabled, Ordering::Relaxed);
-// }
+pub(crate) fn set_verbose(enabled: bool) {
+    VERBOSE_LOGGING.store(enabled, Ordering::Relaxed);
+}
 
 pub(crate) fn verbose_enabled() -> bool {
     VERBOSE_LOGGING.load(Ordering::Relaxed)

@@ -59,13 +59,16 @@ impl Lockdock {
 
     #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn version() -> Result<Output> {
-        Ok(Output::Message(env!("CARGO_PKG_VERSION").into()))
+        let mut version = "lockdock ".to_string();
+        version.push_str(env!("CARGO_PKG_VERSION"));
+        Ok(Output::Message(version))
     }
 
     pub(crate) fn run(&self) -> Result<Output> {
         let config = lockdock_daemon::Config {
             socket_path: self.socket_path(),
             pid_path: self.pid_path(),
+            verbose: self.verbose,
         };
         lockdock_daemon::run(&config)?;
 

@@ -55,10 +55,6 @@ void lockdock_mouse_release(void *object) {
     }
 }
 
-bool lockdock_mouse_set_cursor_association(bool associated) {
-    return CGAssociateMouseAndMouseCursorPosition(associated) == kCGErrorSuccess;
-}
-
 void lockdock_mouse_warp(LockDockMousePoint point) {
     CGWarpMouseCursorPosition(CGPointMake(point.x, point.y));
 }

@@ -19,7 +19,7 @@ It lets you choose which display the dock should be on and prevents macOS from m
 
 - Pins the macOS Dock to a selected display.
 - Runs in the background as a daemon.
-- Use minimal resources: the daemon is written in C and typically stays under 10 MB of RAM
+- Use minimal resources: the daemon is written in Rust and typically stays under 10 MB of RAM
 
 ## Requirements
 

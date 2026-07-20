@@ -20,5 +20,6 @@ bool lockdock_display_is_accessibility_trusted(void);
 bool lockdock_display_copy_dock_window_bounds(LockDockDisplayRect *rect_out);
 bool lockdock_display_copy_accessibility_dock_window_bounds(
     LockDockDisplayRect *rect_out);
+bool lockdock_display_dock_overlay_active(uint32_t display_id);
 
 #endif

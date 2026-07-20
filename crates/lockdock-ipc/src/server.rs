@@ -3,13 +3,16 @@ use std::{
     io::Write as _,
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use crate::{
     parse_request, serialize_response,
     transport::{read_message, validate_socket_path},
-    Error, Request, Response, Result,
+    Request, Response, Result,
 };
+
+const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct Server {
     listener: UnixListener,
@@ -36,18 +39,10 @@ impl Server {
         })
     }
 
-    pub fn accept(&self) -> Result<Event> {
-        let incoming = self.accept_incoming()?;
-        let request = incoming.request.map_err(Error::Daemon)?;
-
-        Ok(Event {
-            request,
-            stream: incoming.stream,
-        })
-    }
-
     pub fn accept_incoming(&self) -> Result<Incoming> {
         let (mut stream, _) = self.listener.accept()?;
+        stream.set_read_timeout(Some(CLIENT_IO_TIMEOUT))?;
+        stream.set_write_timeout(Some(CLIENT_IO_TIMEOUT))?;
         let message = read_message(&mut stream)?;
         let request = parse_request(&message).map_err(|error| error.to_string());
 
@@ -72,19 +67,6 @@ pub struct Incoming {
 }
 
 impl Incoming {
-    pub fn respond(mut self, response: &Response) -> Result<()> {
-        let response_json = serialize_response(response)?;
-        self.stream.write_all(response_json.as_bytes())?;
-        Ok(())
-    }
-}
-
-pub struct Event {
-    pub request: Request,
-    stream: UnixStream,
-}
-
-impl Event {
     pub fn respond(mut self, response: &Response) -> Result<()> {
         let response_json = serialize_response(response)?;
         self.stream.write_all(response_json.as_bytes())?;

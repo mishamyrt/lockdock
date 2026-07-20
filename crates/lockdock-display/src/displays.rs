@@ -7,6 +7,10 @@ use crate::{DisplayId, Error, Result};
 
 const MAX_DISPLAYS: usize = 32;
 const MAX_DISPLAYS_C: c_uint = 32;
+/// A hidden Dock slides offscreen by its own height, so its window may sit
+/// entirely outside every display; this caps how far away it may drift while
+/// still being attributed to the nearest display.
+const NEAREST_DISPLAY_MAX_DISTANCE: f64 = 512.0;
 
 #[must_use]
 pub fn active_displays() -> Vec<DisplayId> {
@@ -27,12 +31,29 @@ pub fn display_bounds(display_id: DisplayId) -> Result<Rect> {
     }
 }
 
-fn display_at_point(point: Point) -> Option<DisplayId> {
-    active_displays().into_iter().find(|display_id| {
-        display_bounds(*display_id)
-            .map(|bounds| bounds.contains(point))
-            .unwrap_or(false)
-    })
+fn nearest_display(point: Point) -> Option<DisplayId> {
+    let mut best = None;
+    let mut best_distance = NEAREST_DISPLAY_MAX_DISTANCE.powi(2);
+
+    for display_id in active_displays() {
+        let Ok(bounds) = display_bounds(display_id) else {
+            continue;
+        };
+        let dx = (bounds.x - point.x)
+            .max(point.x - (bounds.x + bounds.width))
+            .max(0.0);
+        let dy = (bounds.y - point.y)
+            .max(point.y - (bounds.y + bounds.height))
+            .max(0.0);
+        let distance = dx * dx + dy * dy;
+
+        if distance < best_distance {
+            best_distance = distance;
+            best = Some(display_id);
+        }
+    }
+
+    best
 }
 
 #[must_use]
@@ -58,7 +79,7 @@ pub(crate) fn display_for_rect(rect: Rect) -> Option<DisplayId> {
     }
 
     best.or_else(|| {
-        display_at_point(Point {
+        nearest_display(Point {
             x: rect.x + rect.width / 2.0,
             y: rect.y + rect.height / 2.0,
         })

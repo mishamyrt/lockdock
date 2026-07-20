@@ -14,12 +14,15 @@ pub use daemon::run;
 pub struct Config {
     pub socket_path: PathBuf,
     pub pid_path: PathBuf,
+    pub verbose: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
     Operation(String),
+    #[error("relocation interrupted: {0}")]
+    RelocationInterrupted(String),
     #[error(transparent)]
     Display(#[from] lockdock_display::Error),
     #[error(transparent)]
