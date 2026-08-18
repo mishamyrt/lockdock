@@ -17,7 +17,7 @@ use crate::{log_error, log_info, Config, Result};
 const DISPLAY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// How long to wait after a failed reconcile before the poll loop tries to
 /// move the Dock again, so retries do not keep grabbing the cursor.
-const RECONCILE_RETRY_COOLDOWN: Duration = Duration::from_secs(30);
+const RECONCILE_RETRY_COOLDOWN: Duration = Duration::from_secs(15);
 
 #[derive(Default)]
 struct PollState {
