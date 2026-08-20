@@ -8,7 +8,7 @@ permissions:
     contents: read
 
 env:
-    LLVM_VERSION: 22
+    RUST_VERSION: stable
 
 jobs:
     lint:
@@ -19,15 +19,14 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v6.0.2
 
-            - name: Setup LLVM
-              run: |
-                  brew install llvm@${{ env.LLVM_VERSION }}
-                  echo "$(brew --prefix llvm@${{ env.LLVM_VERSION }})/bin/" >> $GITHUB_PATH
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: ${{ env.RUST_VERSION }}
+                  components: clippy
 
             - name: Check code quality
-              run: |
-                  export PATH=$(brew --prefix llvm@20)/bin/:$PATH
-                  make tidy
+              run: make lint
 
     test:
         name: Test
@@ -40,10 +39,10 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v6.0.2
 
-            - name: Setup LLVM
-              run: |
-                  brew install llvm@${{ env.LLVM_VERSION }}
-                  echo "$(brew --prefix llvm@${{ env.LLVM_VERSION }})/bin/" >> $GITHUB_PATH
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: ${{ env.RUST_VERSION }}
 
             - name: Test
               run: make test
