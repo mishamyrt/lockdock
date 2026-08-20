@@ -3,13 +3,21 @@ VERSION = 0.4.2
 PREFIX = ${HOME}/.local/bin
 THIRDPARTY_DIR = thirdparty
 TARGET = target/release/lockdock
+SIGNING_IDENTITY ?= Lockdock signing
+SIGNING_IDENTIFIER ?= co.myrt.lockdock
 
-.PHONY: all clean fmt lint test install publish
+.PHONY: all clean fmt lint test sign install publish
 
-all: $(TARGET)
+all: sign
 
 $(TARGET): Cargo.toml Cargo.lock $(shell find crates -type f)
 	cargo build --release -p lockdock
+
+sign: $(TARGET)
+	codesign --force --sign "$(SIGNING_IDENTITY)" \
+		--identifier "$(SIGNING_IDENTIFIER)" \
+		--timestamp=none $(TARGET)
+	codesign --verify --strict --verbose=2 $(TARGET)
 
 clean:
 	rm -rf target
@@ -27,7 +35,7 @@ lint:
 test:
 	cargo test --workspace --all-targets
 
-install: $(TARGET)
+install: sign
 	cp $(TARGET) $(PREFIX)/lockdock
 
 publish:
