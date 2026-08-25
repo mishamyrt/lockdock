@@ -36,61 +36,47 @@ jobs:
                   brew install llvm@${{ env.LLVM_VERSION }}
                   echo "$(brew --prefix llvm@${{ env.LLVM_VERSION }})/bin/" >> $GITHUB_PATH
 
-            - name: Import signing certificate
+            - name: Write signing certificate
               env:
                   SIGNING_CERTIFICATE: ${{ secrets.LOCKDOCK_SIGNING_CERTIFICATE }}
-                  SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.LOCKDOCK_SIGNING_CERTIFICATE_PASSWORD }}
               run: |
                   set -euo pipefail
 
                   certificate_path="${RUNNER_TEMP}/lockdock-signing.p12"
-                  certificate_pem_path="${RUNNER_TEMP}/lockdock-signing.pem"
-                  keychain_path="${RUNNER_TEMP}/lockdock-signing.keychain-db"
-                  keychain_password="lockdock-ci"
 
                   : "${SIGNING_CERTIFICATE:?LOCKDOCK_SIGNING_CERTIFICATE is not set}"
-                  : "${SIGNING_CERTIFICATE_PASSWORD:?LOCKDOCK_SIGNING_CERTIFICATE_PASSWORD is not set}"
 
                   printf '%s' "${SIGNING_CERTIFICATE}" | base64 -D > "${certificate_path}"
 
-                  security create-keychain -p "${keychain_password}" "${keychain_path}"
-                  security set-keychain-settings -lut 21600 "${keychain_path}"
-                  security unlock-keychain -p "${keychain_password}" "${keychain_path}"
-                  security import "${certificate_path}" \
-                      -k "${keychain_path}" \
-                      -P "${SIGNING_CERTIFICATE_PASSWORD}" \
-                      -T /usr/bin/codesign
-                  security find-certificate \
-                      -c "Lockdock signing" \
-                      -p \
-                      "${keychain_path}" > "${certificate_pem_path}"
-                  security add-trusted-cert \
-                      -r trustRoot \
-                      -p codeSign \
-                      -k "${keychain_path}" \
-                      "${certificate_pem_path}"
-                  security set-key-partition-list \
-                      -S apple-tool:,apple: \
-                      -s \
-                      -k "${keychain_password}" \
-                      "${keychain_path}"
-                  security list-keychains -d user -s "${keychain_path}"
-                  security find-identity -v -p codesigning "${keychain_path}" \
-                      | grep -F '"Lockdock signing"'
+            - name: Build release binary
+              run: |
+                  set -euo pipefail
 
-            - name: Build release asset
+                  cargo build --release -p lockdock
+
+                  test -x target/release/lockdock
+
+            - name: Sign release binary
+              uses: indygreg/apple-code-sign-action@5e7a4a01fe4dffe948ef3bcf1f4538d963cb0c72 # v1.2
+              with:
+                  input_path: target/release/lockdock
+                  p12_file: ${{ runner.temp }}/lockdock-signing.p12
+                  p12_password: ${{ secrets.LOCKDOCK_SIGNING_CERTIFICATE_PASSWORD }}
+                  rcodesign_version: "0.29.0"
+                  sign_args: |
+                      --binary-identifier
+                      co.myrt.lockdock
+                      --timestamp-url
+                      none
+
+            - name: Package release asset
               env:
                   TAG: ${{ github.ref_name }}
                   ASSET_ARCH: ${{ matrix.asset_arch }}
               run: |
                   set -euo pipefail
 
-                  rm -rf build dist
-
-                  make
-
-                  test -x target/release/lockdock
-                  codesign --verify --strict --verbose=2 target/release/lockdock
+                  codesign --display --verbose=4 target/release/lockdock
 
                   mkdir -p dist
 
