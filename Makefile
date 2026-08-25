@@ -39,7 +39,9 @@ install: sign
 	cp $(TARGET) $(PREFIX)/lockdock
 
 publish:
-	git add Makefile
+	sed -E 's/^version = "[^"]+"/version = "${VERSION}"/' Cargo.toml > Cargo.toml.tmp
+	mv Cargo.toml.tmp Cargo.toml
+	git add Makefile Cargo.toml Cargo.lock
 	git commit -m "chore: release ${VERSION} 🔥"
 	git tag "v${VERSION}"
 	git-cliff -o CHANGELOG.md
