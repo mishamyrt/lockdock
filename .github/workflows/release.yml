@@ -2,11 +2,13 @@ name: Release
 
 on:
     push:
+        branches:
+            - master
         tags:
             - "*"
 
 permissions:
-    contents: write
+    contents: read
 
 env:
     LLVM_VERSION: 22
@@ -105,8 +107,11 @@ jobs:
 
     release:
         name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
         needs: build
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
 
         steps:
             - name: Checkout
