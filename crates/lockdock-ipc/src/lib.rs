@@ -15,6 +15,10 @@ pub use transport::MAX_MESSAGE_SIZE;
 pub enum Error {
     #[error("socket path is too long for a Unix domain socket")]
     SocketPathTooLong,
+    #[error("daemon socket is already in use")]
+    SocketInUse,
+    #[error("socket path is occupied by a non-socket file")]
+    SocketPathOccupied,
     #[error("message exceeded {MAX_MESSAGE_SIZE} bytes")]
     MessageTooLarge,
     #[error("state contains too many displays")]

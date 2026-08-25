@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::PathBuf;
+use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
@@ -45,6 +46,29 @@ impl PollState {
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+struct PidFile {
+    path: PathBuf,
+}
+
+impl PidFile {
+    fn create(path: &Path) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::write(path, format!("{}\n", std::process::id()))?;
+        Ok(Self {
+            path: path.to_owned(),
+        })
+    }
+}
+
+impl Drop for PidFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 extern "C" fn handle_termination_signal(_signal: libc::c_int) {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
 }
@@ -59,9 +83,10 @@ fn install_termination_handler() {
 
 pub fn run(config: &Config) -> Result<()> {
     crate::logging::set_verbose(config.verbose);
+    SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
     install_termination_handler();
     let listener = Server::bind(&config.socket_path)?;
-    write_pid_file(&config.pid_path)?;
+    let _pid_file = PidFile::create(&config.pid_path)?;
     let preferences = DisplayPreferences::new()?;
     let mut snapshot = DisplaySnapshot::load()?;
     let (sender, receiver) = mpsc::channel();
@@ -80,7 +105,8 @@ pub fn run(config: &Config) -> Result<()> {
         listener.socket_path().display()
     );
 
-    thread::spawn(move || loop {
+    let socket_path = listener.socket_path().to_owned();
+    let accept_thread = thread::spawn(move || loop {
         match listener.accept_incoming() {
             Ok(incoming) => {
                 if sender.send(incoming).is_err() {
@@ -102,7 +128,11 @@ pub fn run(config: &Config) -> Result<()> {
     }
 
     shutdown();
-    let _ = fs::remove_file(&config.pid_path);
+    drop(receiver);
+    let _ = UnixStream::connect(socket_path);
+    if accept_thread.join().is_err() {
+        log_error!("IPC accept thread panicked");
+    }
     Ok(())
 }
 
@@ -192,13 +222,4 @@ fn handle_incoming(
     if let Err(error) = incoming.respond(&response) {
         log_error!("IPC response failed: {error}");
     }
-}
-
-fn write_pid_file(pid_path: &PathBuf) -> Result<()> {
-    if let Some(parent) = pid_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    fs::write(pid_path, format!("{}\n", std::process::id()))?;
-    Ok(())
 }
