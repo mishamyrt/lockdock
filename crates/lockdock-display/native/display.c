@@ -4,11 +4,16 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <limits.h>
+#include <stdatomic.h>
 
 // Maybe 16 is enough, but we'll be safe.
 #define LOCKDOCK_DISPLAY_MAX_WINDOWS 256
 // A window covering this fraction of a display counts as display-covering.
 #define LOCKDOCK_DISPLAY_COVERING_RATIO 0.9
+
+// Window dictionaries are expensive to enumerate, so steady-state checks use
+// the last validated Dock bar ID and fall back to discovery when it disappears.
+static _Atomic(CGWindowID) g_dock_window_id = kCGNullWindowID;
 
 static LockDockDisplayRect lockdock_display_rect_from_cg(CGRect rect) {
   LockDockDisplayRect out = {
@@ -90,6 +95,19 @@ static int lockdock_display_copy_window_layer(CFDictionaryRef window) {
     return layer;
 }
 
+static CGWindowID lockdock_display_copy_window_id(CFDictionaryRef window) {
+    CFNumberRef window_number =
+        (CFNumberRef)CFDictionaryGetValue(window, kCGWindowNumber);
+    int32_t window_id = 0;
+
+    if (window_number != NULL && CFGetTypeID(window_number) == CFNumberGetTypeID() &&
+        CFNumberGetValue(window_number, kCFNumberSInt32Type, &window_id)) {
+        return (CGWindowID)window_id;
+    }
+
+    return kCGNullWindowID;
+}
+
 static double lockdock_display_intersection_area(CGRect left, CGRect right) {
     CGRect intersection = CGRectIntersection(left, right);
 
@@ -104,6 +122,93 @@ static int lockdock_display_dock_window_level(void) {
     return (int)CGWindowLevelForKey(kCGDockWindowLevelKey);
 }
 
+static bool lockdock_display_copy_dock_bar_window(CFDictionaryRef window,
+                                                  int dock_level,
+                                                  CGRect *bounds_out,
+                                                  CGWindowID *window_id_out) {
+    CGWindowID window_id;
+
+    if (window == NULL || CFGetTypeID(window) != CFDictionaryGetTypeID() ||
+        !lockdock_display_owner_is_dock(window) ||
+        lockdock_display_window_is_wallpaper(window) ||
+        !lockdock_display_copy_window_bounds(window, bounds_out) ||
+        lockdock_display_copy_window_layer(window) != dock_level) {
+        return false;
+    }
+
+    window_id = lockdock_display_copy_window_id(window);
+    if (window_id == kCGNullWindowID) {
+        return false;
+    }
+
+    *window_id_out = window_id;
+    return true;
+}
+
+static CFArrayRef lockdock_display_copy_window_info(CGWindowID window_id) {
+    int32_t raw_window_id = (int32_t)window_id;
+    CFNumberRef window_number =
+        CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &raw_window_id);
+    CFArrayRef window_ids;
+    CFArrayRef windows;
+    const void *values[1];
+
+    if (window_number == NULL) {
+        return NULL;
+    }
+
+    values[0] = window_number;
+    window_ids =
+        CFArrayCreate(kCFAllocatorDefault, values, 1, &kCFTypeArrayCallBacks);
+    CFRelease(window_number);
+    if (window_ids == NULL) {
+        return NULL;
+    }
+
+    windows = CGWindowListCreateDescriptionFromArray(window_ids);
+    CFRelease(window_ids);
+    return windows;
+}
+
+static bool lockdock_display_copy_cached_dock_window_bounds(
+    LockDockDisplayRect *rect_out) {
+    CGWindowID cached_window_id =
+        atomic_load_explicit(&g_dock_window_id, memory_order_relaxed);
+    CFArrayRef windows;
+    CGRect bounds = CGRectZero;
+    CGWindowID window_id = kCGNullWindowID;
+    int dock_level = lockdock_display_dock_window_level();
+    bool found = false;
+
+    if (cached_window_id == kCGNullWindowID) {
+        return false;
+    }
+
+    windows = lockdock_display_copy_window_info(cached_window_id);
+    if (windows != NULL) {
+        if (CFArrayGetCount(windows) > 0) {
+            CFDictionaryRef window =
+                (CFDictionaryRef)CFArrayGetValueAtIndex(windows, 0);
+
+            if (lockdock_display_copy_dock_bar_window(window, dock_level, &bounds,
+                                                      &window_id) &&
+                window_id == cached_window_id) {
+                found = true;
+            }
+        }
+        CFRelease(windows);
+    }
+
+    if (!found) {
+        atomic_store_explicit(&g_dock_window_id, kCGNullWindowID,
+                              memory_order_relaxed);
+        return false;
+    }
+
+    *rect_out = lockdock_display_rect_from_cg(bounds);
+    return true;
+}
+
 // The Dock bar window is the Dock-owned window sitting exactly at
 // kCGDockWindowLevel. Everything else the Dock process may own (Mission
 // Control and Expose backdrops on older macOS, wallpaper, hot corners) lives
@@ -116,22 +221,20 @@ static bool lockdock_display_copy_dock_window_bounds_for_option(
     CGRect best_bounds = CGRectZero;
     double best_area = 0;
     int dock_level = lockdock_display_dock_window_level();
+    CGWindowID best_window_id = kCGNullWindowID;
 
     if (windows == NULL) {
         return false;
     }
 
     for (CFIndex i = 0; i < CFArrayGetCount(windows); i++) {
-        CFDictionaryRef window =
-            (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
+        CFDictionaryRef window = (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
         CGRect bounds = CGRectZero;
+        CGWindowID window_id = kCGNullWindowID;
         double area;
 
-        if (window == NULL || CFGetTypeID(window) != CFDictionaryGetTypeID() ||
-            !lockdock_display_owner_is_dock(window) ||
-            lockdock_display_window_is_wallpaper(window) ||
-            !lockdock_display_copy_window_bounds(window, &bounds) ||
-            lockdock_display_copy_window_layer(window) != dock_level) {
+        if (!lockdock_display_copy_dock_bar_window(window, dock_level, &bounds,
+                                                   &window_id)) {
             continue;
         }
 
@@ -139,15 +242,18 @@ static bool lockdock_display_copy_dock_window_bounds_for_option(
         if (area > best_area) {
             best_area = area;
             best_bounds = bounds;
+            best_window_id = window_id;
         }
     }
 
     CFRelease(windows);
 
-    if (CGRectIsNull(best_bounds) || CGRectIsEmpty(best_bounds)) {
+    if (best_window_id == kCGNullWindowID || CGRectIsNull(best_bounds) ||
+        CGRectIsEmpty(best_bounds)) {
         return false;
     }
 
+    atomic_store_explicit(&g_dock_window_id, best_window_id, memory_order_relaxed);
     *rect_out = lockdock_display_rect_from_cg(best_bounds);
     return true;
 }
@@ -157,11 +263,12 @@ bool lockdock_display_copy_dock_window_bounds(LockDockDisplayRect *rect_out) {
         return false;
     }
 
-    return lockdock_display_copy_dock_window_bounds_for_option(
+    return lockdock_display_copy_cached_dock_window_bounds(rect_out) ||
+           lockdock_display_copy_dock_window_bounds_for_option(
                kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
                rect_out) ||
-           lockdock_display_copy_dock_window_bounds_for_option(kCGWindowListOptionAll,
-                                                               rect_out);
+           lockdock_display_copy_dock_window_bounds_for_option(
+               kCGWindowListOptionAll, rect_out);
 }
 
 static pid_t lockdock_display_find_dock_pid(void) {
