@@ -1,4 +1,4 @@
-VERSION = 0.4.2
+VERSION = 0.5.0
 
 PREFIX = ${HOME}/.local/bin
 THIRDPARTY_DIR = thirdparty
@@ -41,6 +41,7 @@ install: sign
 publish:
 	sed -E 's/^version = "[^"]+"/version = "${VERSION}"/' Cargo.toml > Cargo.toml.tmp
 	mv Cargo.toml.tmp Cargo.toml
+	cargo update -p repomop
 	git add Makefile Cargo.toml Cargo.lock
 	git commit -m "chore: release ${VERSION} 🔥"
 	git tag "v${VERSION}"
