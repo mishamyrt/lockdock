@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0](https://github.com/mishamyrt/lockdock/compare/v0.4.2..v0.5.0) - 2026-08-25
+
+### 🚀 Features
+
+- Avoid blocking when dock on edge
+- Stabilize
+- Decrease relocation retry delay
+- Add signing
+- Avoid windows re-scan
+
+### 🐛 Bug Fixes
+
+- Lock socket
+
+### 🚜 Refactor
+
+- Initial migration to rust
+- Simplify movement
+- Rework ipc crate
+- Rework display crate
+- Remove c code
+- Move cache to daemon
+- Split geometry
+- Simplify display
+- Split daemon
+- Split cli crate
+- Rework logging
+
+### ⚡ Performance
+
+- Avoid hot path dock position polling
+
 ## [0.4.2](https://github.com/mishamyrt/lockdock/compare/v0.4.1..v0.4.2) - 2026-05-17
 
 ### 🚀 Features
