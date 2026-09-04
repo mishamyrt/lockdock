@@ -145,31 +145,6 @@ static bool lockdock_display_copy_dock_bar_window(
     return true;
 }
 
-static CFArrayRef lockdock_display_copy_window_info(CGWindowID window_id) {
-    int32_t raw_window_id = (int32_t)window_id;
-    CFNumberRef window_number =
-        CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &raw_window_id);
-    CFArrayRef window_ids;
-    CFArrayRef windows;
-    const void *values[1];
-
-    if (window_number == NULL) {
-        return NULL;
-    }
-
-    values[0] = window_number;
-    window_ids =
-        CFArrayCreate(kCFAllocatorDefault, values, 1, &kCFTypeArrayCallBacks);
-    CFRelease(window_number);
-    if (window_ids == NULL) {
-        return NULL;
-    }
-
-    windows = CGWindowListCreateDescriptionFromArray(window_ids);
-    CFRelease(window_ids);
-    return windows;
-}
-
 static bool lockdock_display_copy_cached_dock_window_bounds(
     LockDockDisplayRect *rect_out
 ) {
@@ -185,7 +160,10 @@ static bool lockdock_display_copy_cached_dock_window_bounds(
         return false;
     }
 
-    windows = lockdock_display_copy_window_info(cached_window_id);
+    windows = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionIncludingWindow,
+        cached_window_id
+    );
     if (windows != NULL) {
         if (CFArrayGetCount(windows) > 0) {
             CFDictionaryRef window =
