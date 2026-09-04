@@ -16,16 +16,13 @@
 static _Atomic(CGWindowID) g_dock_window_id = kCGNullWindowID;
 
 static LockDockDisplayRect lockdock_display_rect_from_cg(CGRect rect) {
-  LockDockDisplayRect out = {
-    rect.origin.x,
-    rect.origin.y,
-    rect.size.width,
-    rect.size.height
-  };
-  return out;
+    LockDockDisplayRect out =
+        {rect.origin.x, rect.origin.y, rect.size.width, rect.size.height};
+    return out;
 }
 
-uint32_t lockdock_display_get_active_displays(uint32_t *displays, uint32_t max_displays) {
+uint32_t
+lockdock_display_get_active_displays(uint32_t *displays, uint32_t max_displays) {
     uint32_t count = 0;
 
     if (displays == NULL || max_displays == 0) {
@@ -60,7 +57,8 @@ bool lockdock_display_is_accessibility_trusted(void) {
 }
 
 static bool lockdock_display_owner_is_dock(CFDictionaryRef window) {
-    CFStringRef owner = (CFStringRef)CFDictionaryGetValue(window, kCGWindowOwnerName);
+    CFStringRef owner =
+        (CFStringRef)CFDictionaryGetValue(window, kCGWindowOwnerName);
 
     return owner != NULL && CFGetTypeID(owner) == CFStringGetTypeID() &&
            CFStringCompare(owner, CFSTR("Dock"), 0) == kCFCompareEqualTo;
@@ -73,8 +71,8 @@ static bool lockdock_display_window_is_wallpaper(CFDictionaryRef window) {
            CFStringHasPrefix(name, CFSTR("Wallpaper-"));
 }
 
-static bool lockdock_display_copy_window_bounds(CFDictionaryRef window,
-                                                CGRect *bounds_out) {
+static bool
+lockdock_display_copy_window_bounds(CFDictionaryRef window, CGRect *bounds_out) {
     CFDictionaryRef bounds =
         (CFDictionaryRef)CFDictionaryGetValue(window, kCGWindowBounds);
 
@@ -122,10 +120,12 @@ static int lockdock_display_dock_window_level(void) {
     return (int)CGWindowLevelForKey(kCGDockWindowLevelKey);
 }
 
-static bool lockdock_display_copy_dock_bar_window(CFDictionaryRef window,
-                                                  int dock_level,
-                                                  CGRect *bounds_out,
-                                                  CGWindowID *window_id_out) {
+static bool lockdock_display_copy_dock_bar_window(
+    CFDictionaryRef window,
+    int dock_level,
+    CGRect *bounds_out,
+    CGWindowID *window_id_out
+) {
     CGWindowID window_id;
 
     if (window == NULL || CFGetTypeID(window) != CFDictionaryGetTypeID() ||
@@ -171,7 +171,8 @@ static CFArrayRef lockdock_display_copy_window_info(CGWindowID window_id) {
 }
 
 static bool lockdock_display_copy_cached_dock_window_bounds(
-    LockDockDisplayRect *rect_out) {
+    LockDockDisplayRect *rect_out
+) {
     CGWindowID cached_window_id =
         atomic_load_explicit(&g_dock_window_id, memory_order_relaxed);
     CFArrayRef windows;
@@ -190,8 +191,12 @@ static bool lockdock_display_copy_cached_dock_window_bounds(
             CFDictionaryRef window =
                 (CFDictionaryRef)CFArrayGetValueAtIndex(windows, 0);
 
-            if (lockdock_display_copy_dock_bar_window(window, dock_level, &bounds,
-                                                      &window_id) &&
+            if (lockdock_display_copy_dock_bar_window(
+                    window,
+                    dock_level,
+                    &bounds,
+                    &window_id
+                ) &&
                 window_id == cached_window_id) {
                 found = true;
             }
@@ -200,8 +205,11 @@ static bool lockdock_display_copy_cached_dock_window_bounds(
     }
 
     if (!found) {
-        atomic_store_explicit(&g_dock_window_id, kCGNullWindowID,
-                              memory_order_relaxed);
+        atomic_store_explicit(
+            &g_dock_window_id,
+            kCGNullWindowID,
+            memory_order_relaxed
+        );
         return false;
     }
 
@@ -216,7 +224,8 @@ static bool lockdock_display_copy_cached_dock_window_bounds(
 // older versions it is a thin strip; either way the level identifies it.
 static bool lockdock_display_copy_dock_window_bounds_for_option(
     CGWindowListOption option,
-    LockDockDisplayRect *rect_out) {
+    LockDockDisplayRect *rect_out
+) {
     CFArrayRef windows = CGWindowListCopyWindowInfo(option, kCGNullWindowID);
     CGRect best_bounds = CGRectZero;
     double best_area = 0;
@@ -233,8 +242,12 @@ static bool lockdock_display_copy_dock_window_bounds_for_option(
         CGWindowID window_id = kCGNullWindowID;
         double area;
 
-        if (!lockdock_display_copy_dock_bar_window(window, dock_level, &bounds,
-                                                   &window_id)) {
+        if (!lockdock_display_copy_dock_bar_window(
+                window,
+                dock_level,
+                &bounds,
+                &window_id
+            )) {
             continue;
         }
 
@@ -266,22 +279,24 @@ bool lockdock_display_copy_dock_window_bounds(LockDockDisplayRect *rect_out) {
     return lockdock_display_copy_cached_dock_window_bounds(rect_out) ||
            lockdock_display_copy_dock_window_bounds_for_option(
                kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
-               rect_out) ||
+               rect_out
+           ) ||
            lockdock_display_copy_dock_window_bounds_for_option(
-               kCGWindowListOptionAll, rect_out);
+               kCGWindowListOptionAll,
+               rect_out
+           );
 }
 
 static pid_t lockdock_display_find_dock_pid(void) {
-    CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionAll,
-                                                   kCGNullWindowID);
+    CFArrayRef windows =
+        CGWindowListCopyWindowInfo(kCGWindowListOptionAll, kCGNullWindowID);
 
     if (windows == NULL) {
         return 0;
     }
 
     for (CFIndex i = 0; i < CFArrayGetCount(windows); i++) {
-        CFDictionaryRef window =
-            (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
+        CFDictionaryRef window = (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
         CFNumberRef pid_number;
         int pid = 0;
 
@@ -302,8 +317,8 @@ static pid_t lockdock_display_find_dock_pid(void) {
     return 0;
 }
 
-static bool lockdock_display_copy_ax_bounds(AXUIElementRef element,
-                                            CGRect *bounds_out) {
+static bool
+lockdock_display_copy_ax_bounds(AXUIElementRef element, CGRect *bounds_out) {
     CGPoint position = CGPointZero;
     CGSize size = CGSizeZero;
     CFTypeRef value = NULL;
@@ -313,8 +328,8 @@ static bool lockdock_display_copy_ax_bounds(AXUIElementRef element,
     if (AXUIElementCopyAttributeValue(element, kAXPositionAttribute, &value) ==
             kAXErrorSuccess &&
         value != NULL) {
-        has_position = AXValueGetValue((AXValueRef)value, kAXValueCGPointType,
-                                       &position);
+        has_position =
+            AXValueGetValue((AXValueRef)value, kAXValueCGPointType, &position);
         CFRelease(value);
     }
 
@@ -330,13 +345,18 @@ static bool lockdock_display_copy_ax_bounds(AXUIElementRef element,
         return false;
     }
 
-    *bounds_out = CGRectMake(position.x, position.y, has_size ? size.width : 1.0,
-                             has_size ? size.height : 1.0);
+    *bounds_out = CGRectMake(
+        position.x,
+        position.y,
+        has_size ? size.width : 1.0,
+        has_size ? size.height : 1.0
+    );
     return true;
 }
 
 bool lockdock_display_copy_accessibility_dock_window_bounds(
-    LockDockDisplayRect *rect_out) {
+    LockDockDisplayRect *rect_out
+) {
     pid_t dock_pid = lockdock_display_find_dock_pid();
     AXUIElementRef app;
     CFArrayRef windows = NULL;
@@ -352,8 +372,11 @@ bool lockdock_display_copy_accessibility_dock_window_bounds(
         return false;
     }
 
-    if (AXUIElementCopyAttributeValue(app, kAXWindowsAttribute,
-                                      (CFTypeRef *)&windows) != kAXErrorSuccess ||
+    if (AXUIElementCopyAttributeValue(
+            app,
+            kAXWindowsAttribute,
+            (CFTypeRef *)&windows
+        ) != kAXErrorSuccess ||
         windows == NULL) {
         CFRelease(app);
         return false;
@@ -410,14 +433,14 @@ bool lockdock_display_dock_overlay_active(uint32_t display_id) {
 
     windows = CGWindowListCopyWindowInfo(
         kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
-        kCGNullWindowID);
+        kCGNullWindowID
+    );
     if (windows == NULL) {
         return false;
     }
 
     for (CFIndex i = 0; i < CFArrayGetCount(windows); i++) {
-        CFDictionaryRef window =
-            (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
+        CFDictionaryRef window = (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
         CGRect bounds = CGRectZero;
         int layer;
 

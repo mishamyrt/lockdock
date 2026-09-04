@@ -41,11 +41,15 @@ void *lockdock_mouse_event_source_create(void) {
     return CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 }
 
-void lockdock_mouse_event_source_set_suppression_interval(void *source,
-                                                          double interval) {
+void lockdock_mouse_event_source_set_suppression_interval(
+    void *source,
+    double interval
+) {
     if (source != NULL) {
-        CGEventSourceSetLocalEventsSuppressionInterval((CGEventSourceRef)source,
-                                                       interval);
+        CGEventSourceSetLocalEventsSuppressionInterval(
+            (CGEventSourceRef)source,
+            interval
+        );
     }
 }
 
@@ -60,10 +64,12 @@ void lockdock_mouse_warp(LockDockMousePoint point) {
 }
 
 void lockdock_mouse_post_moved(void *source, LockDockMousePoint point) {
-    CGEventRef event = CGEventCreateMouseEvent((CGEventSourceRef)source,
-                                               kCGEventMouseMoved,
-                                               CGPointMake(point.x, point.y),
-                                               kCGMouseButtonLeft);
+    CGEventRef event = CGEventCreateMouseEvent(
+        (CGEventSourceRef)source,
+        kCGEventMouseMoved,
+        CGPointMake(point.x, point.y),
+        kCGMouseButtonLeft
+    );
 
     if (event != NULL) {
         CGEventPost(kCGHIDEventTap, event);
@@ -71,14 +77,18 @@ void lockdock_mouse_post_moved(void *source, LockDockMousePoint point) {
     }
 }
 
-void lockdock_mouse_post_delta(void *source,
-                               LockDockMousePoint point,
-                               int64_t delta_x,
-                               int64_t delta_y) {
-    CGEventRef event = CGEventCreateMouseEvent((CGEventSourceRef)source,
-                                               kCGEventMouseMoved,
-                                               CGPointMake(point.x, point.y),
-                                               kCGMouseButtonLeft);
+void lockdock_mouse_post_delta(
+    void *source,
+    LockDockMousePoint point,
+    int64_t delta_x,
+    int64_t delta_y
+) {
+    CGEventRef event = CGEventCreateMouseEvent(
+        (CGEventSourceRef)source,
+        kCGEventMouseMoved,
+        CGPointMake(point.x, point.y),
+        kCGMouseButtonLeft
+    );
 
     if (event == NULL) {
         return;
@@ -101,10 +111,12 @@ static void lockdock_mouse_event_tap_enable(void) {
     }
 }
 
-static CGEventRef lockdock_mouse_event_callback(CGEventTapProxy proxy,
-                                                CGEventType type,
-                                                CGEventRef event,
-                                                void *user_info) {
+static CGEventRef lockdock_mouse_event_callback(
+    CGEventTapProxy proxy,
+    CGEventType type,
+    CGEventRef event,
+    void *user_info
+) {
     CGPoint point;
     int kind = LOCKDOCK_MOUSE_EVENT_OTHER;
 
@@ -119,9 +131,10 @@ static CGEventRef lockdock_mouse_event_callback(CGEventTapProxy proxy,
 
     if (type == kCGEventMouseMoved) {
         kind = LOCKDOCK_MOUSE_EVENT_MOVED;
-    } else if (type == kCGEventLeftMouseDragged ||
-               type == kCGEventRightMouseDragged ||
-               type == kCGEventOtherMouseDragged) {
+    } else if (
+        type == kCGEventLeftMouseDragged || type == kCGEventRightMouseDragged ||
+        type == kCGEventOtherMouseDragged
+    ) {
         kind = LOCKDOCK_MOUSE_EVENT_DRAGGED;
     } else {
         return event;
@@ -175,17 +188,24 @@ static void *lockdock_mouse_event_thread(void *context) {
            CGEventMaskBit(kCGEventRightMouseDragged) |
            CGEventMaskBit(kCGEventOtherMouseDragged);
 
-    g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
-                                   kCGEventTapOptionDefault, mask,
-                                   lockdock_mouse_event_callback, NULL);
+    g_event_tap = CGEventTapCreate(
+        kCGSessionEventTap,
+        kCGHeadInsertEventTap,
+        kCGEventTapOptionDefault,
+        mask,
+        lockdock_mouse_event_callback,
+        NULL
+    );
     if (g_event_tap == NULL) {
         lockdock_mouse_publish_failed(
-            "Failed to create event tap. Grant Accessibility permission in System Settings");
+            "Failed to create event tap. Grant Accessibility permission in System "
+            "Settings"
+        );
         return NULL;
     }
 
-    g_event_source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault,
-                                                   g_event_tap, 0);
+    g_event_source =
+        CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_event_tap, 0);
     if (g_event_source == NULL) {
         CFRelease(g_event_tap);
         g_event_tap = NULL;

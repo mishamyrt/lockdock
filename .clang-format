@@ -7,4 +7,15 @@ UseTab: Never
 PointerAlignment: Right
 SortIncludes:
     Enabled: true
+
+ContinuationIndentWidth: 4
+BracedInitializerIndentWidth: 4
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+PackParameters:
+  BinPack: OnePerLine
+  BreakAfter: 3
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+Cpp11BracedListStyle: true
 ---
