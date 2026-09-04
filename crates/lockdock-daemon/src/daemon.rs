@@ -103,14 +103,20 @@ pub fn run(config: &Config) -> Result<()> {
     log_info!("lockdock daemon listening on {}", listener.socket_path().display());
 
     let socket_path = listener.socket_path().to_owned();
-    let accept_thread = thread::spawn(move || loop {
-        match listener.accept_incoming() {
-            Ok(incoming) => {
-                if sender.send(incoming).is_err() {
-                    break;
+    let accept_thread = thread::spawn(move || {
+        while !SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
+            match listener.accept_incoming() {
+                Ok(incoming) => {
+                    if sender.send(incoming).is_err() {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    if !SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
+                        log_error!("IPC accept failed: {error}");
+                    }
                 }
             }
-            Err(error) => log_error!("IPC accept failed: {error}"),
         }
     });
 
@@ -124,6 +130,7 @@ pub fn run(config: &Config) -> Result<()> {
         }
     }
 
+    SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
     shutdown();
     drop(receiver);
     let _ = UnixStream::connect(socket_path);
