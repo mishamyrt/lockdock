@@ -7,9 +7,6 @@ on:
 permissions:
     contents: read
 
-env:
-    RUST_VERSION: stable
-
 jobs:
     lint:
         name: Lint
@@ -17,13 +14,12 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v6.0.2
+              uses: actions/checkout@v7
 
             - name: Setup Rust
-              uses: dtolnay/rust-toolchain@stable
+              uses: actions-rust-lang/setup-rust-toolchain@v1
               with:
-                  toolchain: ${{ env.RUST_VERSION }}
-                  components: clippy
+                  components: rustfmt, clippy
 
             - name: Check code quality
               run: make lint
@@ -37,12 +33,12 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v6.0.2
+              uses: actions/checkout@v7
 
             - name: Setup Rust
-              uses: dtolnay/rust-toolchain@stable
+              uses: actions-rust-lang/setup-rust-toolchain@v1
               with:
-                  toolchain: ${{ env.RUST_VERSION }}
+                  components: rustfmt, clippy
 
             - name: Test
               run: make test

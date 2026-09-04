@@ -29,7 +29,7 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v6.0.2
+              uses: actions/checkout@v7
 
             - name: Setup LLVM
               run: |
@@ -84,7 +84,7 @@ jobs:
                   tar -C target/release -czf "dist/${archive}" lockdock
 
             - name: Upload release asset
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: release-asset-darwin-${{ matrix.asset_arch }}
                   path: dist/*.tar.gz
@@ -101,10 +101,10 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v6.0.2
+              uses: actions/checkout@v7
 
             - name: Download release assets
-              uses: actions/download-artifact@v5
+              uses: actions/download-artifact@v8
               with:
                   pattern: release-asset-*
                   path: dist
@@ -157,7 +157,7 @@ jobs:
                   ' CHANGELOG.md > dist/release-notes.md
 
             - name: Publish release
-              uses: softprops/action-gh-release@v3.0.0
+              uses: softprops/action-gh-release@v3.0.3
               with:
                   body_path: dist/release-notes.md
                   files: |
@@ -167,7 +167,7 @@ jobs:
                   overwrite_files: true
 
             - name: Checkout Homebrew tap
-              uses: actions/checkout@v6.0.2
+              uses: actions/checkout@v7
               with:
                   repository: mishamyrt/homebrew-tap
                   token: ${{ secrets.HOMEBREW_TAP_TOKEN || vars.HOMEBREW_TAP_TOKEN }}
