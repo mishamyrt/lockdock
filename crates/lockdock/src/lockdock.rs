@@ -4,6 +4,8 @@ use lockdock_ipc::Client;
 use lunchd::{KeepAlive, LaunchAgent};
 use std::fmt::Write as _;
 
+use crate::homebrew;
+
 #[derive(Debug, thiserror::Error)]
 
 pub(crate) enum Error {
@@ -71,28 +73,32 @@ impl Lockdock {
 
     #[allow(clippy::unused_self)]
     pub(crate) fn disable_agent(&self) -> Result<Output> {
-        let agent = LaunchAgent::new(BUNDLE_ID);
-        if !agent.exists() {
-            return Err(Error::NotEnabled);
+        if !Self::homebrew_service("stop")? {
+            let agent = LaunchAgent::new(BUNDLE_ID);
+            if !agent.exists() {
+                return Err(Error::NotEnabled);
+            }
+            agent.uninstall()?;
         }
-        agent.uninstall()?;
 
         Ok(Output::Message("Service successfully disabled".into()))
     }
 
     pub(crate) fn enable_agent(&self) -> Result<Output> {
-        let args = self.program_arguments()?;
-        let agent = LaunchAgent::builder(BUNDLE_ID)
-            .program_arguments(args)
-            .keep_alive(KeepAlive::Crashed)
-            .run_at_load(true)
-            .build()
-            .map_err(|error| Error::LaunchAgentBuild(error.to_string()))?;
+        if !Self::homebrew_service("start")? {
+            let args = self.program_arguments()?;
+            let agent = LaunchAgent::builder(BUNDLE_ID)
+                .program_arguments(args)
+                .keep_alive(KeepAlive::Crashed)
+                .run_at_load(true)
+                .build()
+                .map_err(|error| Error::LaunchAgentBuild(error.to_string()))?;
 
-        if agent.exists() {
-            return Err(Error::AlreadyEnabled);
+            if agent.exists() {
+                return Err(Error::AlreadyEnabled);
+            }
+            agent.install()?;
         }
-        agent.install()?;
 
         Ok(Output::Message("Service successfully enabled".into()))
     }
@@ -129,6 +135,21 @@ impl Lockdock {
         self.client().unlock()?;
 
         Ok(Output::Message("Dock position unlocked".to_string()))
+    }
+
+    fn homebrew_service(action: &str) -> Result<bool> {
+        let program = env::current_exe()?.canonicalize()?;
+        let Some(brew) = homebrew::executable_for(&program) else {
+            return Ok(false);
+        };
+
+        // Older versions registered their own agent even when installed by brew.
+        let agent = LaunchAgent::new(BUNDLE_ID);
+        if agent.exists() {
+            agent.uninstall()?;
+        }
+        homebrew::service(&brew, action)?;
+        Ok(true)
     }
 
     fn program_arguments(&self) -> Result<Vec<String>> {

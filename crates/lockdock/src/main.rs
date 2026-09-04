@@ -1,3 +1,4 @@
+mod homebrew;
 mod lockdock;
 
 use clap::{Parser, Subcommand};
