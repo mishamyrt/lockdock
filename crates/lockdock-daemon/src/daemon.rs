@@ -18,6 +18,7 @@ use crate::preferences::DisplayPreferences;
 use crate::{log_error, log_info, Config, Result};
 
 const DISPLAY_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const DISPLAY_INFO_RETRY_INTERVAL: Duration = Duration::from_secs(15);
 /// How long to wait after a failed reconcile before the poll loop tries to
 /// move the Dock again, so retries do not keep grabbing the cursor.
 const RECONCILE_RETRY_COOLDOWN: Duration = Duration::from_secs(15);
@@ -28,6 +29,7 @@ struct PollState {
     /// consecutive polls, so reconcile does not run while macOS is still
     /// rearranging displays.
     pending_displays: Option<Vec<DisplayId>>,
+    info_retry_after: Option<Instant>,
     reconcile_cooldown_until: Option<Instant>,
 }
 
@@ -153,6 +155,9 @@ fn poll_display_changes(
     let displays = lockdock_display::active_displays();
     if displays == snapshot.status.displays {
         state.pending_displays = None;
+        if state.info_retry_after.is_some_and(|after| Instant::now() >= after) {
+            refresh_display_info(snapshot, state);
+        }
         // Bounds can change while the ID list stays the same (resolution
         // switches, rearrangement); keep the suppression zones in sync.
         refresh_display_cache();
@@ -176,9 +181,7 @@ fn poll_display_changes(
     state.pending_displays = None;
 
     refresh_display_cache();
-    if let Err(error) = snapshot.refresh_info() {
-        log_error!("Display info refresh failed: {error}");
-    }
+    refresh_display_info(snapshot, state);
     if let Err(error) = snapshot.refresh_status() {
         log_error!("Display status refresh failed: {error}");
         return;
@@ -191,6 +194,17 @@ fn poll_display_changes(
         state.clear_cooldown();
         if let Err(error) = snapshot.refresh_status() {
             log_error!("Display status refresh failed: {error}");
+        }
+    }
+}
+
+fn refresh_display_info(snapshot: &mut DisplaySnapshot, state: &mut PollState) {
+    match snapshot.refresh_info() {
+        Ok(()) => state.info_retry_after = None,
+        Err(error) => {
+            state.info_retry_after =
+                Some(Instant::now() + DISPLAY_INFO_RETRY_INTERVAL);
+            log_error!("Display info refresh failed: {error}");
         }
     }
 }
