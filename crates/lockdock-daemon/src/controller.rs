@@ -25,7 +25,10 @@ pub(crate) fn handle_request(
     snapshot: &mut DisplaySnapshot,
 ) -> Response {
     match request {
-        Request::GetState => Response::State(build_state(snapshot)),
+        Request::GetState => match snapshot.refresh_location() {
+            Ok(()) => Response::State(build_state(snapshot)),
+            Err(error) => failed(&error),
+        },
         Request::SetState { target } => {
             match apply_set_state(*target, preferences, snapshot) {
                 Ok(()) => succeeded(),
@@ -58,7 +61,7 @@ fn apply_set_state(
 
     let identity = display_identity(display_id, &snapshot.info)?;
 
-    if snapshot.status.displays[snapshot.status.location_index] != display_id {
+    if lockdock_display::dock_display()? != display_id {
         clear_lock_target();
         relocate_display_until_current(display_id)?;
     }

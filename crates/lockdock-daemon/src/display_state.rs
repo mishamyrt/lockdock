@@ -38,6 +38,13 @@ impl DisplaySnapshot {
         Ok(())
     }
 
+    pub(crate) fn refresh_location(&mut self) -> Result<()> {
+        let dock_display = lockdock_display::dock_display()?;
+        self.status.location_index = find_display_index(dock_display, &self.status)
+            .ok_or_else(|| Error::Operation("invalid display status".to_owned()))?;
+        Ok(())
+    }
+
     pub(crate) fn refresh_info(&mut self) -> Result<()> {
         self.info = lockdock_display::load_display_info()?;
         Ok(())

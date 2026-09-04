@@ -156,6 +156,9 @@ fn poll_display_changes(
         // Bounds can change while the ID list stays the same (resolution
         // switches, rearrangement); keep the suppression zones in sync.
         refresh_display_cache();
+        if let Err(error) = snapshot.refresh_location() {
+            log_error!("Display status refresh failed: {error}");
+        }
         if !refresh_dock_support() {
             if let Err(error) = reconcile_display_state(preferences, snapshot) {
                 log_error!("Display reconcile failed: {error}");
