@@ -17,7 +17,7 @@ impl EventSource {
         unsafe {
             ffi::lockdock_mouse_event_source_set_suppression_interval(
                 self.raw, interval,
-            )
+            );
         };
     }
 
