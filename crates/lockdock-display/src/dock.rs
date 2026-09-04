@@ -68,7 +68,9 @@ fn capture_dock_display() -> Option<DisplayId> {
         }
     }
 
-    if unsafe { ffi::lockdock_display_copy_accessibility_dock_window_bounds(&raw mut bounds) } {
+    if unsafe {
+        ffi::lockdock_display_copy_accessibility_dock_window_bounds(&raw mut bounds)
+    } {
         return display_for_rect(bounds);
     }
 

@@ -18,7 +18,10 @@ extern "C" {
         delta_x: c_longlong,
         delta_y: c_longlong,
     );
-    pub(crate) fn lockdock_mouse_start_event_tap(error: *mut c_char, error_size: usize) -> bool;
+    pub(crate) fn lockdock_mouse_start_event_tap(
+        error: *mut c_char,
+        error_size: usize,
+    ) -> bool;
     pub(crate) fn lockdock_mouse_stop_event_tap();
 }
 

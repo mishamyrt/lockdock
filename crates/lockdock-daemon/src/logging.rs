@@ -14,10 +14,8 @@ pub(crate) fn verbose_enabled() -> bool {
 
 #[allow(clippy::print_stderr)]
 pub(crate) fn log(level: &str, message: fmt::Arguments<'_>) {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp =
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
 
     eprintln!("[{timestamp}] {level}: {message}");
 }

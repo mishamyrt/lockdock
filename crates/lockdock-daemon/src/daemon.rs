@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 use lockdock_display::DisplayId;
 use lockdock_ipc::{CommandResult, Incoming, Response, Server};
 
-use crate::controller::{dock_needs_healing, handle_request, reconcile_display_state};
+use crate::controller::{
+    dock_needs_healing, handle_request, reconcile_display_state,
+};
 use crate::display_lock::{refresh_display_cache, refresh_dock_support, shutdown};
 use crate::display_state::DisplaySnapshot;
 use crate::preferences::DisplayPreferences;
@@ -31,12 +33,12 @@ struct PollState {
 
 impl PollState {
     fn in_cooldown(&self) -> bool {
-        self.reconcile_cooldown_until
-            .is_some_and(|until| Instant::now() < until)
+        self.reconcile_cooldown_until.is_some_and(|until| Instant::now() < until)
     }
 
     fn start_cooldown(&mut self) {
-        self.reconcile_cooldown_until = Some(Instant::now() + RECONCILE_RETRY_COOLDOWN);
+        self.reconcile_cooldown_until =
+            Some(Instant::now() + RECONCILE_RETRY_COOLDOWN);
     }
 
     fn clear_cooldown(&mut self) {
@@ -57,9 +59,7 @@ impl PidFile {
         }
 
         fs::write(path, format!("{}\n", std::process::id()))?;
-        Ok(Self {
-            path: path.to_owned(),
-        })
+        Ok(Self { path: path.to_owned() })
     }
 }
 
@@ -100,10 +100,7 @@ pub fn run(config: &Config) -> Result<()> {
         log_error!("Display status refresh failed: {error}");
     }
 
-    log_info!(
-        "lockdock daemon listening on {}",
-        listener.socket_path().display()
-    );
+    log_info!("lockdock daemon listening on {}", listener.socket_path().display());
 
     let socket_path = listener.socket_path().to_owned();
     let accept_thread = thread::spawn(move || loop {

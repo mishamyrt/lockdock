@@ -15,9 +15,12 @@ const NEAREST_DISPLAY_MAX_DISTANCE: f64 = 512.0;
 #[must_use]
 pub fn active_displays() -> Vec<DisplayId> {
     let mut displays = [0; MAX_DISPLAYS];
-    let count =
-        unsafe { ffi::lockdock_display_get_active_displays(displays.as_mut_ptr(), MAX_DISPLAYS_C) }
-            as usize;
+    let count = unsafe {
+        ffi::lockdock_display_get_active_displays(
+            displays.as_mut_ptr(),
+            MAX_DISPLAYS_C,
+        )
+    } as usize;
 
     displays[..count.min(MAX_DISPLAYS)].to_vec()
 }
@@ -39,12 +42,10 @@ fn nearest_display(point: Point) -> Option<DisplayId> {
         let Ok(bounds) = display_bounds(display_id) else {
             continue;
         };
-        let dx = (bounds.x - point.x)
-            .max(point.x - (bounds.x + bounds.width))
-            .max(0.0);
-        let dy = (bounds.y - point.y)
-            .max(point.y - (bounds.y + bounds.height))
-            .max(0.0);
+        let dx =
+            (bounds.x - point.x).max(point.x - (bounds.x + bounds.width)).max(0.0);
+        let dy =
+            (bounds.y - point.y).max(point.y - (bounds.y + bounds.height)).max(0.0);
         let distance = dx * dx + dy * dy;
 
         if distance < best_distance {

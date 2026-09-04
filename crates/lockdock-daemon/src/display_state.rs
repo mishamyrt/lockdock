@@ -46,11 +46,7 @@ impl DisplaySnapshot {
 
 pub(crate) fn build_state(snapshot: &DisplaySnapshot) -> State {
     let target = lock_target().and_then(|display_id| {
-        snapshot
-            .status
-            .displays
-            .iter()
-            .position(|display| *display == display_id)
+        snapshot.status.displays.iter().position(|display| *display == display_id)
     });
 
     State {
@@ -65,7 +61,10 @@ pub(crate) fn build_state(snapshot: &DisplaySnapshot) -> State {
     }
 }
 
-fn display_label(display_id: DisplayId, info: &HashMap<DisplayId, DisplayInfo>) -> String {
+fn display_label(
+    display_id: DisplayId,
+    info: &HashMap<DisplayId, DisplayInfo>,
+) -> String {
     let Some(info) = info.get(&display_id) else {
         return format!("Display-{display_id}");
     };
@@ -111,10 +110,7 @@ pub(crate) fn query_display_status() -> Result<DisplayStatus> {
         .position(|display| *display == dock_display)
         .ok_or_else(|| Error::Operation("invalid display status".to_owned()))?;
 
-    Ok(DisplayStatus {
-        displays,
-        location_index,
-    })
+    Ok(DisplayStatus { displays, location_index })
 }
 
 fn missing_identity() -> Error {
@@ -136,11 +132,11 @@ pub(crate) fn find_active_display_by_identity(
     })
 }
 
-pub(crate) fn find_display_index(display_id: DisplayId, status: &DisplayStatus) -> Option<usize> {
-    status
-        .displays
-        .iter()
-        .position(|display| *display == display_id)
+pub(crate) fn find_display_index(
+    display_id: DisplayId,
+    status: &DisplayStatus,
+) -> Option<usize> {
+    status.displays.iter().position(|display| *display == display_id)
 }
 
 pub(crate) fn display_identity_is_valid(identity: &DisplayIdentity) -> bool {

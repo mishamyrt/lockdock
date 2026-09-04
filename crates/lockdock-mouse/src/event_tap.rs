@@ -27,11 +27,13 @@ pub struct MouseEvent {
 pub struct EventTap;
 
 impl EventTap {
-    pub fn start(handler: impl Fn(MouseEvent) -> bool + Send + 'static) -> Result<Self> {
+    pub fn start(
+        handler: impl Fn(MouseEvent) -> bool + Send + 'static,
+    ) -> Result<Self> {
         let handlers = HANDLER.get_or_init(|| Mutex::new(None));
-        let mut handlers = handlers
-            .lock()
-            .map_err(|_| Error::Native("mouse event handler mutex poisoned".to_owned()))?;
+        let mut handlers = handlers.lock().map_err(|_| {
+            Error::Native("mouse event handler mutex poisoned".to_owned())
+        })?;
         if handlers.is_some() {
             return Err(Error::AlreadyRunning);
         }
@@ -40,7 +42,9 @@ impl EventTap {
         drop(handlers);
 
         let mut error = ErrorBuffer::new();
-        if unsafe { ffi::lockdock_mouse_start_event_tap(error.as_mut_ptr(), error.len()) } {
+        if unsafe {
+            ffi::lockdock_mouse_start_event_tap(error.as_mut_ptr(), error.len())
+        } {
             Ok(Self)
         } else {
             clear_handler();

@@ -43,18 +43,12 @@ pub(crate) struct Lockdock {
 
 impl Lockdock {
     pub(crate) fn new<P: Into<PathBuf>>(verbose: bool, cache_dir: P) -> Self {
-        Self {
-            verbose,
-            cache_dir: cache_dir.into(),
-        }
+        Self { verbose, cache_dir: cache_dir.into() }
     }
 
     pub(crate) fn cache_dir() -> Result<PathBuf> {
         let home = env::var_os("HOME").ok_or(Error::HomeNotFound)?;
-        Ok(PathBuf::from(home)
-            .join("Library")
-            .join("Caches")
-            .join(BUNDLE_ID))
+        Ok(PathBuf::from(home).join("Library").join("Caches").join(BUNDLE_ID))
     }
 
     #[allow(clippy::unnecessary_wraps)]

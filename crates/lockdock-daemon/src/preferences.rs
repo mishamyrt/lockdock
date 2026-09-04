@@ -18,19 +18,15 @@ pub(crate) struct DisplayPreferences {
 
 impl DisplayPreferences {
     pub(crate) fn new() -> Result<Self> {
-        Ok(Self {
-            preferences: Preferences::new(BUNDLE_ID)?,
-        })
+        Ok(Self { preferences: Preferences::new(BUNDLE_ID)? })
     }
 
     pub(crate) fn save(&self, identity: &DisplayIdentity) -> Result<()> {
         self.preferences.remove(LEGACY_UUID)?;
-        self.preferences
-            .set(PREFERRED_BUILTIN, &identity.is_builtin)?;
+        self.preferences.set(PREFERRED_BUILTIN, &identity.is_builtin)?;
         self.preferences
             .set(PREFERRED_VENDOR, &i64::from(identity.vendor_number))?;
-        self.preferences
-            .set(PREFERRED_MODEL, &i64::from(identity.model_number))?;
+        self.preferences.set(PREFERRED_MODEL, &i64::from(identity.model_number))?;
         self.preferences
             .set(PREFERRED_SERIAL, &i64::from(identity.serial_number))?;
         Ok(())

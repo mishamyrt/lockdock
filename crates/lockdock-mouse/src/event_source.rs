@@ -14,14 +14,23 @@ impl EventSource {
     }
 
     pub fn set_suppression_interval(&self, interval: f64) {
-        unsafe { ffi::lockdock_mouse_event_source_set_suppression_interval(self.raw, interval) };
+        unsafe {
+            ffi::lockdock_mouse_event_source_set_suppression_interval(
+                self.raw, interval,
+            )
+        };
     }
 
     pub fn post_moved(&self, point: Point) {
         unsafe { ffi::lockdock_mouse_post_moved(self.raw, point) };
     }
 
-    pub fn post_delta(&self, point: Point, delta_x: c_longlong, delta_y: c_longlong) {
+    pub fn post_delta(
+        &self,
+        point: Point,
+        delta_x: c_longlong,
+        delta_y: c_longlong,
+    ) {
         unsafe { ffi::lockdock_mouse_post_delta(self.raw, point, delta_x, delta_y) };
     }
 }

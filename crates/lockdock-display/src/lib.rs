@@ -5,7 +5,8 @@ mod system_profiler;
 
 pub use displays::{active_displays, display_bounds};
 pub use dock::{
-    dock_display, dock_orientation, dock_overlay_active, dock_window_display, DockOrientation,
+    dock_display, dock_orientation, dock_overlay_active, dock_window_display,
+    DockOrientation,
 };
 pub use system_profiler::{load_display_info, DisplayInfo};
 
@@ -18,7 +19,9 @@ pub enum Error {
 
     #[error("could not determine current Dock display")]
     MissingDockDisplay,
-    #[error("could not determine current Dock display (Accessibility permission is not granted)")]
+    #[error(
+        "could not determine current Dock display (Accessibility permission is not granted)"
+    )]
     AccessibilityNotTrusted,
 }
 

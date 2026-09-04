@@ -13,9 +13,7 @@ pub struct Client {
 impl Client {
     #[must_use]
     pub fn new(socket_path: impl Into<PathBuf>) -> Self {
-        Self {
-            socket_path: socket_path.into(),
-        }
+        Self { socket_path: socket_path.into() }
     }
 
     pub fn get_state(&self) -> Result<State> {

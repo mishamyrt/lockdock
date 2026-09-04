@@ -4,10 +4,12 @@ use std::time::Duration;
 use lockdock_display::DisplayId;
 use lockdock_ipc::{CommandResult, Request, Response};
 
-use crate::display_lock::{clear_lock_target, lock_target, refresh_dock_support, set_lock_target};
+use crate::display_lock::{
+    clear_lock_target, lock_target, refresh_dock_support, set_lock_target,
+};
 use crate::display_state::{
-    build_state, display_identity, find_active_display_by_identity, find_display_index,
-    query_display_status, DisplaySnapshot,
+    build_state, display_identity, find_active_display_by_identity,
+    find_display_index, query_display_status, DisplaySnapshot,
 };
 use crate::preferences::DisplayPreferences;
 use crate::relocation::relocate_display;
@@ -24,10 +26,12 @@ pub(crate) fn handle_request(
 ) -> Response {
     match request {
         Request::GetState => Response::State(build_state(snapshot)),
-        Request::SetState { target } => match apply_set_state(*target, preferences, snapshot) {
-            Ok(()) => succeeded(),
-            Err(error) => failed(&error),
-        },
+        Request::SetState { target } => {
+            match apply_set_state(*target, preferences, snapshot) {
+                Ok(()) => succeeded(),
+                Err(error) => failed(&error),
+            }
+        }
         Request::Unlock => match apply_unlock(preferences) {
             Ok(()) => succeeded(),
             Err(error) => failed(&error),
@@ -47,7 +51,8 @@ fn apply_set_state(
 
     if !dock_is_supported() {
         return Err(Error::Operation(
-            "Dock orientation is not supported; only bottom placement can be locked".to_owned(),
+            "Dock orientation is not supported; only bottom placement can be locked"
+                .to_owned(),
         ));
     }
 
@@ -96,7 +101,9 @@ pub(crate) fn reconcile_display_state(
     let Some(identity) = preferences.load()? else {
         return Ok(());
     };
-    let Some(preferred_display) = find_active_display_by_identity(&identity, snapshot) else {
+    let Some(preferred_display) =
+        find_active_display_by_identity(&identity, snapshot)
+    else {
         return Ok(());
     };
 
@@ -161,7 +168,9 @@ fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {
         thread::sleep(RELOCATION_SETTLE_DELAY);
 
         match query_display_status() {
-            Ok(status) if status.displays[status.location_index] == display_id => return Ok(()),
+            Ok(status) if status.displays[status.location_index] == display_id => {
+                return Ok(())
+            }
             Ok(status) => {
                 let current = status.displays[status.location_index];
                 last_error = Some(format!(
@@ -172,16 +181,14 @@ fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {
         }
     }
 
-    Err(Error::Operation(last_error.unwrap_or_else(|| {
-        format!("Dock did not move to display {display_id}")
-    })))
+    Err(Error::Operation(
+        last_error
+            .unwrap_or_else(|| format!("Dock did not move to display {display_id}")),
+    ))
 }
 
 fn succeeded() -> Response {
-    Response::Result(CommandResult {
-        success: true,
-        reason: None,
-    })
+    Response::Result(CommandResult { success: true, reason: None })
 }
 
 fn failed(error: &Error) -> Response {

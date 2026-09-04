@@ -22,9 +22,9 @@ static EVENT_TAP: OnceLock<Mutex<Option<EventTap>>> = OnceLock::new();
 
 pub(crate) fn set_lock_target(display_id: DisplayId) -> Result<()> {
     let event_tap = EVENT_TAP.get_or_init(|| Mutex::new(None));
-    let mut event_tap = event_tap
-        .lock()
-        .map_err(|_| Error::Operation("mouse event tap mutex poisoned".to_owned()))?;
+    let mut event_tap = event_tap.lock().map_err(|_| {
+        Error::Operation("mouse event tap mutex poisoned".to_owned())
+    })?;
 
     if event_tap.is_none() {
         *event_tap = Some(

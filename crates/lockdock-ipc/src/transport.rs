@@ -7,9 +7,7 @@ const MAX_SOCKET_PATH_SIZE: usize = 104;
 
 pub(crate) fn read_message(stream: &mut UnixStream) -> Result<String> {
     let mut buffer = Vec::with_capacity(MAX_MESSAGE_SIZE);
-    stream
-        .take((MAX_MESSAGE_SIZE + 1) as u64)
-        .read_to_end(&mut buffer)?;
+    stream.take((MAX_MESSAGE_SIZE + 1) as u64).read_to_end(&mut buffer)?;
     if buffer.len() > MAX_MESSAGE_SIZE {
         return Err(Error::MessageTooLarge);
     }

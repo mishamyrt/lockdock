@@ -57,14 +57,8 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
     let overlaps = collect_edge_overlaps(display_id, edge_min, edge_max, edge_y);
     let safe_segment = find_safe_edge_segment(edge_min, edge_max, &overlaps);
     let trigger_x = choose_trigger_coordinate(bounds, &overlaps, safe_segment);
-    let approach = Point {
-        x: trigger_x,
-        y: edge_y - RELOCATION_APPROACH_OFFSET,
-    };
-    let edge = Point {
-        x: trigger_x,
-        y: edge_y - 1.0,
-    };
+    let approach = Point { x: trigger_x, y: edge_y - RELOCATION_APPROACH_OFFSET };
+    let edge = Point { x: trigger_x, y: edge_y - 1.0 };
 
     if let Some(source) = source.as_ref() {
         source.set_suppression_interval(0.0);
@@ -75,7 +69,12 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
 
     let outcome = if cursor_taken_by_user(approach) {
         RelocationOutcome::Interrupted
-    } else if smooth_move(source.as_ref(), approach, edge, RELOCATION_EDGE_MOVE_STEPS) {
+    } else if smooth_move(
+        source.as_ref(),
+        approach,
+        edge,
+        RELOCATION_EDGE_MOVE_STEPS,
+    ) {
         wait_for_dock_relocation(source.as_ref(), edge, display_id)
     } else {
         RelocationOutcome::Interrupted
@@ -98,7 +97,11 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
     }
 }
 
-fn find_safe_edge_segment(edge_min: f64, edge_max: f64, overlaps: &[SafeSegment]) -> SafeSegment {
+fn find_safe_edge_segment(
+    edge_min: f64,
+    edge_max: f64,
+    overlaps: &[SafeSegment],
+) -> SafeSegment {
     let mut best = SafeSegment::default();
     let mut cursor = edge_min;
     for overlap in overlaps {
@@ -133,7 +136,9 @@ fn collect_edge_overlaps(
         let other_min_cross = other.y;
         let other_max_cross = other.y + other.height;
 
-        if other_max_cross < edge_cross_pos - 1.0 || other_min_cross > edge_cross_pos + 1.0 {
+        if other_max_cross < edge_cross_pos - 1.0
+            || other_min_cross > edge_cross_pos + 1.0
+        {
             continue;
         }
 
@@ -154,9 +159,7 @@ fn collect_edge_overlaps(
             .partial_cmp(&right.start)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| {
-                left.end
-                    .partial_cmp(&right.end)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                left.end.partial_cmp(&right.end).unwrap_or(std::cmp::Ordering::Equal)
             })
     });
 
@@ -169,12 +172,7 @@ fn update_best_segment(best: &mut SafeSegment, start: f64, end: f64) {
     }
     let width = end - start;
     if width > best.width {
-        *best = SafeSegment {
-            start,
-            end,
-            width,
-            center: start + width / 2.0,
-        };
+        *best = SafeSegment { start, end, width, center: start + width / 2.0 };
     }
 }
 
@@ -210,7 +208,9 @@ fn wait_for_dock_relocation(
             return RelocationOutcome::Interrupted;
         }
 
-        if (attempt + 1) % RELOCATION_PROBE_INTERVAL == 0 && dock_probe_matches(display_id) {
+        if (attempt + 1) % RELOCATION_PROBE_INTERVAL == 0
+            && dock_probe_matches(display_id)
+        {
             return RelocationOutcome::Relocated;
         }
     }
@@ -248,7 +248,11 @@ fn move_cursor(source: Option<&EventSource>, point: Point) {
 
 /// Returns the cursor to where it was before relocation, unless the user has
 /// already taken it somewhere else.
-fn restore_cursor(source: Option<&EventSource>, expected: Point, old_position: Point) {
+fn restore_cursor(
+    source: Option<&EventSource>,
+    expected: Point,
+    old_position: Point,
+) {
     if cursor_taken_by_user(expected) {
         return;
     }
@@ -257,7 +261,12 @@ fn restore_cursor(source: Option<&EventSource>, expected: Point, old_position: P
 
 /// Walks the cursor from `from` to `to` with posted events; returns `false`
 /// when the user grabs the cursor mid-way.
-fn smooth_move(source: Option<&EventSource>, from: Point, to: Point, steps: usize) -> bool {
+fn smooth_move(
+    source: Option<&EventSource>,
+    from: Point,
+    to: Point,
+    steps: usize,
+) -> bool {
     for step in 1..=steps {
         let step = u32::try_from(step).unwrap_or(u32::MAX);
         let steps = u32::try_from(steps).unwrap_or(u32::MAX);

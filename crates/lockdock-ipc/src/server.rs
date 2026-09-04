@@ -36,11 +36,7 @@ impl Server {
         remove_stale_socket(&socket_path)?;
 
         let listener = UnixListener::bind(&socket_path)?;
-        Ok(Self {
-            listener,
-            socket_path,
-            _socket_lock: socket_lock,
-        })
+        Ok(Self { listener, socket_path, _socket_lock: socket_lock })
     }
 
     pub fn accept_incoming(&self) -> Result<Incoming> {
@@ -69,7 +65,8 @@ fn lock_socket(socket_path: &Path) -> Result<File> {
         .write(true)
         .open(PathBuf::from(lock_path))?;
 
-    let status = unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    let status =
+        unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
     if status == 0 {
         return Ok(lock_file);
     }
@@ -136,7 +133,8 @@ mod tests {
     impl TestDir {
         fn new() -> Self {
             let id = NEXT_TEST_ID.fetch_add(1, Ordering::Relaxed);
-            let path = Path::new("/tmp").join(format!("ldi-{}-{id}", std::process::id()));
+            let path =
+                Path::new("/tmp").join(format!("ldi-{}-{id}", std::process::id()));
             fs::create_dir(&path).expect("test directory should be created");
             Self(path)
         }
@@ -158,10 +156,7 @@ mod tests {
         let socket_path = directory.socket_path();
         let server = Server::bind(&socket_path).expect("first server should bind");
 
-        assert!(matches!(
-            Server::bind(&socket_path),
-            Err(Error::SocketInUse)
-        ));
+        assert!(matches!(Server::bind(&socket_path), Err(Error::SocketInUse)));
         assert!(socket_path.exists());
 
         drop(server);
@@ -172,10 +167,12 @@ mod tests {
     fn replaces_stale_socket() {
         let directory = TestDir::new();
         let socket_path = directory.socket_path();
-        let stale_listener = UnixListener::bind(&socket_path).expect("stale socket should bind");
+        let stale_listener =
+            UnixListener::bind(&socket_path).expect("stale socket should bind");
         drop(stale_listener);
 
-        let server = Server::bind(&socket_path).expect("server should replace stale socket");
+        let server =
+            Server::bind(&socket_path).expect("server should replace stale socket");
         assert!(socket_path.exists());
 
         drop(server);
@@ -193,7 +190,8 @@ mod tests {
             Err(Error::SocketPathOccupied)
         ));
         assert_eq!(
-            fs::read_to_string(&socket_path).expect("test file should remain readable"),
+            fs::read_to_string(&socket_path)
+                .expect("test file should remain readable"),
             "keep me"
         );
     }

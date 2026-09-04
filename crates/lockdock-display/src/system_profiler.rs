@@ -30,12 +30,15 @@ type SystemProfilerResult<T> = std::result::Result<T, SystemProfilerError>;
 
 /// Get the display metadata from `system_profiler`.
 pub fn load_display_info() -> Result<HashMap<DisplayId, DisplayInfo>> {
-    let data = get_sp_displays_data().map_err(|error| Error::Native(error.to_string()))?;
+    let data =
+        get_sp_displays_data().map_err(|error| Error::Native(error.to_string()))?;
     parse_displays_data(&data).map_err(|error| Error::Native(error.to_string()))
 }
 
 /// Parse the output of `system_profiler -json SPDisplaysDataType`.
-fn parse_displays_data(data: &[u8]) -> SystemProfilerResult<HashMap<DisplayId, DisplayInfo>> {
+fn parse_displays_data(
+    data: &[u8],
+) -> SystemProfilerResult<HashMap<DisplayId, DisplayInfo>> {
     let root: Value = serde_json::from_slice(data)?;
     Ok(parse_displays_value(&root))
 }
@@ -66,14 +69,10 @@ fn parse_displays_value(root: &Value) -> HashMap<DisplayId, DisplayInfo> {
 }
 
 fn parse_display_value(value: &Value) -> Option<(DisplayId, DisplayInfo)> {
-    let display_id = value
-        .get("_spdisplays_displayID")
-        .and_then(parse_display_id_value)?;
-    let name = value
-        .get("_name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
+    let display_id =
+        value.get("_spdisplays_displayID").and_then(parse_display_id_value)?;
+    let name =
+        value.get("_name").and_then(Value::as_str).unwrap_or_default().to_owned();
 
     Some((
         display_id,
@@ -105,10 +104,7 @@ fn parse_display_id_value(value: &Value) -> Option<DisplayId> {
         return text.parse().ok().filter(|id| *id != 0);
     }
 
-    value
-        .as_u64()
-        .and_then(|id| DisplayId::try_from(id).ok())
-        .filter(|id| *id != 0)
+    value.as_u64().and_then(|id| DisplayId::try_from(id).ok()).filter(|id| *id != 0)
 }
 
 fn parse_hex_u32_value(value: &Value) -> Option<u32> {
@@ -118,10 +114,7 @@ fn parse_hex_u32_value(value: &Value) -> Option<u32> {
             .filter(|id| *id != 0);
     }
 
-    value
-        .as_u64()
-        .and_then(|id| u32::try_from(id).ok())
-        .filter(|id| *id != 0)
+    value.as_u64().and_then(|id| u32::try_from(id).ok()).filter(|id| *id != 0)
 }
 
 #[cfg(test)]
@@ -163,7 +156,8 @@ mod tests {
 
     #[test]
     fn parses_flat_display_metadata() {
-        let displays = parse_displays_data(DISPLAYS_JSON).expect("valid display JSON");
+        let displays =
+            parse_displays_data(DISPLAYS_JSON).expect("valid display JSON");
 
         assert_eq!(displays.len(), 3);
         assert_eq!(
