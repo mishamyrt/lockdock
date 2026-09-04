@@ -120,12 +120,17 @@ pub fn run(config: &Config) -> Result<()> {
         }
     });
 
+    let mut next_poll = Instant::now() + DISPLAY_POLL_INTERVAL;
     while !SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
-        match receiver.recv_timeout(DISPLAY_POLL_INTERVAL) {
+        if Instant::now() >= next_poll {
+            poll_display_changes(&preferences, &mut snapshot, &mut poll_state);
+            next_poll = Instant::now() + DISPLAY_POLL_INTERVAL;
+        }
+
+        let timeout = next_poll.saturating_duration_since(Instant::now());
+        match receiver.recv_timeout(timeout) {
             Ok(incoming) => handle_incoming(incoming, &preferences, &mut snapshot),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                poll_display_changes(&preferences, &mut snapshot, &mut poll_state);
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
