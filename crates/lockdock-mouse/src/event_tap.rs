@@ -1,5 +1,4 @@
 use std::ffi::CStr;
-use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Mutex, OnceLock};
 
@@ -26,14 +25,20 @@ impl EventTap {
         *handlers = Some(Box::new(handler));
         drop(handlers);
 
-        let mut error = ErrorBuffer::new();
+        let mut error = [0; ERROR_BUFFER_SIZE];
         if unsafe {
             ffi::lockdock_mouse_start_event_tap(error.as_mut_ptr(), error.len())
         } {
             Ok(Self)
         } else {
             clear_handler();
-            Err(Error::Native(error.to_string()))
+            let message =
+                unsafe { CStr::from_ptr(error.as_ptr()) }.to_string_lossy();
+            Err(Error::Native(if message.is_empty() {
+                "native mouse operation failed".to_owned()
+            } else {
+                message.into_owned()
+            }))
         }
     }
 }
@@ -65,35 +70,6 @@ fn clear_handler() {
     if let Some(handlers) = HANDLER.get() {
         if let Ok(mut handlers) = handlers.lock() {
             *handlers = None;
-        }
-    }
-}
-
-struct ErrorBuffer([c_char; ERROR_BUFFER_SIZE]);
-
-impl ErrorBuffer {
-    fn new() -> Self {
-        Self([0; ERROR_BUFFER_SIZE])
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut c_char {
-        self.0.as_mut_ptr()
-    }
-
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-}
-
-impl std::fmt::Display for ErrorBuffer {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let message = unsafe { CStr::from_ptr(self.0.as_ptr()) }
-            .to_string_lossy()
-            .into_owned();
-        if message.is_empty() {
-            formatter.write_str("native mouse operation failed")
-        } else {
-            formatter.write_str(&message)
         }
     }
 }
