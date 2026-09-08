@@ -3,7 +3,7 @@ mod event_tap;
 mod ffi;
 
 pub use event_source::EventSource;
-pub use event_tap::{EventTap, MouseEvent, MouseEventKind};
+pub use event_tap::EventTap;
 use lockdock_geometry::Point;
 
 #[derive(Debug, thiserror::Error)]

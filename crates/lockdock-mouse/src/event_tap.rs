@@ -1,5 +1,5 @@
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Mutex, OnceLock};
 
@@ -7,29 +7,14 @@ use crate::{ffi, Error, Point, Result};
 
 const ERROR_BUFFER_SIZE: usize = 512;
 
-type Handler = Box<dyn Fn(MouseEvent) -> bool + Send + 'static>;
+type Handler = Box<dyn Fn(Point) -> bool + Send + 'static>;
 
 static HANDLER: OnceLock<Mutex<Option<Handler>>> = OnceLock::new();
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MouseEventKind {
-    Other,
-    Moved,
-    Dragged,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MouseEvent {
-    pub kind: MouseEventKind,
-    pub location: Point,
-}
 
 pub struct EventTap;
 
 impl EventTap {
-    pub fn start(
-        handler: impl Fn(MouseEvent) -> bool + Send + 'static,
-    ) -> Result<Self> {
+    pub fn start(handler: impl Fn(Point) -> bool + Send + 'static) -> Result<Self> {
         let handlers = HANDLER.get_or_init(|| Mutex::new(None));
         let mut handlers = handlers.lock().map_err(|_| {
             Error::Native("mouse event handler mutex poisoned".to_owned())
@@ -62,15 +47,9 @@ impl Drop for EventTap {
 
 #[no_mangle]
 pub(crate) extern "C" fn lockdock_mouse_should_suppress_event(
-    event_kind: c_int,
     x: f64,
     y: f64,
 ) -> bool {
-    let event = MouseEvent {
-        kind: event_kind_from_raw(event_kind),
-        location: Point { x, y },
-    };
-
     let handlers = HANDLER.get_or_init(|| Mutex::new(None));
     let Ok(handlers) = handlers.lock() else {
         return false;
@@ -79,15 +58,7 @@ pub(crate) extern "C" fn lockdock_mouse_should_suppress_event(
         return false;
     };
 
-    catch_unwind(AssertUnwindSafe(|| handler(event))).unwrap_or(false)
-}
-
-fn event_kind_from_raw(kind: c_int) -> MouseEventKind {
-    match kind {
-        ffi::EVENT_MOUSE_MOVED => MouseEventKind::Moved,
-        ffi::EVENT_MOUSE_DRAGGED => MouseEventKind::Dragged,
-        _ => MouseEventKind::Other,
-    }
+    catch_unwind(AssertUnwindSafe(|| handler(Point { x, y }))).unwrap_or(false)
 }
 
 fn clear_handler() {

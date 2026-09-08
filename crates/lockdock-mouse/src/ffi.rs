@@ -1,4 +1,4 @@
-use std::os::raw::{c_char, c_int, c_longlong, c_void};
+use std::os::raw::{c_char, c_longlong, c_void};
 
 use crate::Point;
 
@@ -24,6 +24,3 @@ extern "C" {
     ) -> bool;
     pub(crate) fn lockdock_mouse_stop_event_tap();
 }
-
-pub(crate) const EVENT_MOUSE_MOVED: c_int = 1;
-pub(crate) const EVENT_MOUSE_DRAGGED: c_int = 2;

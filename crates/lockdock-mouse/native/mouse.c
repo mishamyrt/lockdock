@@ -118,7 +118,6 @@ static CGEventRef lockdock_mouse_event_callback(
     void *user_info
 ) {
     CGPoint point;
-    int kind = LOCKDOCK_MOUSE_EVENT_OTHER;
 
     (void)proxy;
     (void)user_info;
@@ -129,19 +128,13 @@ static CGEventRef lockdock_mouse_event_callback(
         return event;
     }
 
-    if (type == kCGEventMouseMoved) {
-        kind = LOCKDOCK_MOUSE_EVENT_MOVED;
-    } else if (
-        type == kCGEventLeftMouseDragged || type == kCGEventRightMouseDragged ||
-        type == kCGEventOtherMouseDragged
-    ) {
-        kind = LOCKDOCK_MOUSE_EVENT_DRAGGED;
-    } else {
+    if (type != kCGEventMouseMoved && type != kCGEventLeftMouseDragged &&
+        type != kCGEventRightMouseDragged && type != kCGEventOtherMouseDragged) {
         return event;
     }
 
     point = CGEventGetLocation(event);
-    if (lockdock_mouse_should_suppress_event(kind, point.x, point.y)) {
+    if (lockdock_mouse_should_suppress_event(point.x, point.y)) {
         return NULL;
     }
 

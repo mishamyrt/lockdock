@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 
 use lockdock_display::{DisplayId, DockOrientation};
 use lockdock_geometry::{Point, Rect};
-use lockdock_mouse::{EventTap, MouseEvent, MouseEventKind};
+use lockdock_mouse::EventTap;
 
 use crate::{Error, Result};
 
@@ -80,11 +80,7 @@ pub(crate) fn refresh_display_cache() {
     }
 }
 
-fn should_suppress_event(event: MouseEvent) -> bool {
-    if event.kind == MouseEventKind::Other {
-        return false;
-    }
-
+fn should_suppress_event(point: Point) -> bool {
     if !DOCK_SUPPORTED.load(Ordering::SeqCst) {
         LOCK_TARGET.store(0, Ordering::SeqCst);
         return false;
@@ -95,7 +91,7 @@ fn should_suppress_event(event: MouseEvent) -> bool {
         return false;
     }
 
-    let Some(current) = cached_display_at_point(event.location) else {
+    let Some(current) = cached_display_at_point(point) else {
         return false;
     };
 
@@ -103,7 +99,7 @@ fn should_suppress_event(event: MouseEvent) -> bool {
         return false;
     }
 
-    let distance = distance_from_bottom_dock_edge(event.location, current.bounds);
+    let distance = distance_from_bottom_dock_edge(point, current.bounds);
     (0.0..=LOCK_EDGE_ZONE).contains(&distance)
 }
 
