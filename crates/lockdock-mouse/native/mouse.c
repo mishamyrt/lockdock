@@ -56,17 +56,7 @@ void lockdock_mouse_warp(LockDockMousePoint point) {
 }
 
 void lockdock_mouse_post_moved(void *source, LockDockMousePoint point) {
-    CGEventRef event = CGEventCreateMouseEvent(
-        (CGEventSourceRef)source,
-        kCGEventMouseMoved,
-        CGPointMake(point.x, point.y),
-        kCGMouseButtonLeft
-    );
-
-    if (event != NULL) {
-        CGEventPost(kCGHIDEventTap, event);
-        CFRelease(event);
-    }
+    lockdock_mouse_post_delta(source, point, 0, 0);
 }
 
 void lockdock_mouse_post_delta(
