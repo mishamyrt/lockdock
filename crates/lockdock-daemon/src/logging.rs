@@ -30,15 +30,6 @@ macro_rules! log_info {
 }
 
 #[macro_export]
-macro_rules! log_warn {
-    ($($arg:tt)*) => {
-        if $crate::logging::verbose_enabled() {
-            $crate::logging::log("WARN", format_args!($($arg)*))
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
         $crate::logging::log("ERROR", format_args!($($arg)*))
