@@ -5,10 +5,6 @@ use crate::Point;
 extern "C" {
     pub(crate) fn lockdock_mouse_copy_location(point_out: *mut Point) -> bool;
     pub(crate) fn lockdock_mouse_event_source_create() -> *mut c_void;
-    pub(crate) fn lockdock_mouse_event_source_set_suppression_interval(
-        source: *mut c_void,
-        interval: f64,
-    );
     pub(crate) fn lockdock_mouse_release(object: *mut c_void);
     pub(crate) fn lockdock_mouse_warp(point: Point);
     pub(crate) fn lockdock_mouse_post_moved(source: *mut c_void, point: Point);

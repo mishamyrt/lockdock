@@ -38,19 +38,11 @@ bool lockdock_mouse_copy_location(LockDockMousePoint *point_out) {
 }
 
 void *lockdock_mouse_event_source_create(void) {
-    return CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-}
-
-void lockdock_mouse_event_source_set_suppression_interval(
-    void *source,
-    double interval
-) {
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
     if (source != NULL) {
-        CGEventSourceSetLocalEventsSuppressionInterval(
-            (CGEventSourceRef)source,
-            interval
-        );
+        CGEventSourceSetLocalEventsSuppressionInterval(source, 0.0);
     }
+    return source;
 }
 
 void lockdock_mouse_release(void *object) {

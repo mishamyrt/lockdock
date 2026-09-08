@@ -60,10 +60,6 @@ pub(crate) fn relocate_display(display_id: DisplayId) -> Result<()> {
     let approach = Point { x: trigger_x, y: edge_y - RELOCATION_APPROACH_OFFSET };
     let edge = Point { x: trigger_x, y: edge_y - 1.0 };
 
-    if let Some(source) = source.as_ref() {
-        source.set_suppression_interval(0.0);
-    }
-
     move_cursor(source.as_ref(), approach);
     thread::sleep(RELOCATION_APPROACH_DELAY);
 

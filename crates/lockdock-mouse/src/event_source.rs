@@ -13,14 +13,6 @@ impl EventSource {
         (!raw.is_null()).then_some(Self { raw })
     }
 
-    pub fn set_suppression_interval(&self, interval: f64) {
-        unsafe {
-            ffi::lockdock_mouse_event_source_set_suppression_interval(
-                self.raw, interval,
-            );
-        };
-    }
-
     pub fn post_moved(&self, point: Point) {
         unsafe { ffi::lockdock_mouse_post_moved(self.raw, point) };
     }

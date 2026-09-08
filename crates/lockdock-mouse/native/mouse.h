@@ -12,10 +12,6 @@ typedef struct {
 
 bool lockdock_mouse_copy_location(LockDockMousePoint *point_out);
 void *lockdock_mouse_event_source_create(void);
-void lockdock_mouse_event_source_set_suppression_interval(
-    void *source,
-    double interval
-);
 void lockdock_mouse_release(void *object);
 void lockdock_mouse_warp(LockDockMousePoint point);
 void lockdock_mouse_post_moved(void *source, LockDockMousePoint point);
