@@ -10,7 +10,9 @@ use lockdock_ipc::{CommandResult, Incoming, Response, Server};
 use crate::controller::{
     dock_needs_healing, handle_request, reconcile_display_state,
 };
-use crate::display_lock::{refresh_display_cache, refresh_dock_support, shutdown};
+use crate::display_lock::{
+    clear_lock_target, refresh_display_cache, refresh_dock_support,
+};
 use crate::display_state::DisplaySnapshot;
 use crate::preferences::DisplayPreferences;
 use crate::{log_error, log_info, Config, Result};
@@ -114,7 +116,7 @@ pub fn run(config: &Config) -> Result<()> {
     }
 
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
-    shutdown();
+    clear_lock_target();
     drop(receiver);
     let _ = UnixStream::connect(socket_path);
     if accept_thread.join().is_err() {

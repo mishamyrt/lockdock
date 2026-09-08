@@ -61,10 +61,6 @@ pub(crate) fn refresh_dock_support() -> bool {
     supported
 }
 
-pub(crate) fn shutdown() {
-    clear_lock_target();
-}
-
 pub(crate) fn refresh_display_cache() {
     let cache = DISPLAY_CACHE.get_or_init(|| Mutex::new(Vec::new()));
     let mut next = Vec::new();

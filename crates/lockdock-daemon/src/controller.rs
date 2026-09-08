@@ -52,7 +52,7 @@ fn apply_set_state(
             Error::Operation(format!("Display index {target_index} is out of range"))
         })?;
 
-    if !dock_is_supported() {
+    if !refresh_dock_support() {
         return Err(Error::Operation(
             "Dock orientation is not supported; only bottom placement can be locked"
                 .to_owned(),
@@ -82,9 +82,8 @@ pub(crate) fn reconcile_display_state(
     preferences: &DisplayPreferences,
     snapshot: &DisplaySnapshot,
 ) -> Result<()> {
-    if !dock_is_supported() {
-        disable_lock(preferences)?;
-        return Ok(());
+    if !refresh_dock_support() {
+        return apply_unlock(preferences);
     }
 
     if let Some(locked_display) = lock_target() {
@@ -137,16 +136,6 @@ fn preferred_active_display(
 ) -> Option<DisplayId> {
     let identity = preferences.load().ok().flatten()?;
     find_active_display_by_identity(&identity, snapshot)
-}
-
-fn disable_lock(preferences: &DisplayPreferences) -> Result<()> {
-    preferences.clear()?;
-    clear_lock_target();
-    Ok(())
-}
-
-fn dock_is_supported() -> bool {
-    refresh_dock_support()
 }
 
 fn relocate_display_until_current(display_id: DisplayId) -> Result<()> {
