@@ -1,7 +1,6 @@
-use std::{collections::HashMap, io, process::Command};
+use std::{collections::HashMap, process::Command};
 
 use serde_json::Value::{self};
-use thiserror::Error;
 
 use crate::{DisplayId, Error, Result};
 
@@ -14,44 +13,31 @@ pub struct DisplayInfo {
     pub serial_number: u32,
 }
 
-#[derive(Debug, Error)]
-pub(crate) enum SystemProfilerError {
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-
-    #[error(transparent)]
-    Io(#[from] io::Error),
-
-    #[error("system_profiler failed with output: {0}")]
-    CmdFailed(String),
-}
-
-type SystemProfilerResult<T> = std::result::Result<T, SystemProfilerError>;
-
 /// Get the display metadata from `system_profiler`.
 pub fn load_display_info() -> Result<HashMap<DisplayId, DisplayInfo>> {
-    let data =
-        get_sp_displays_data().map_err(|error| Error::Native(error.to_string()))?;
-    parse_displays_data(&data).map_err(|error| Error::Native(error.to_string()))
+    let data = get_sp_displays_data()?;
+    parse_displays_data(&data)
 }
 
 /// Parse the output of `system_profiler -json SPDisplaysDataType`.
-fn parse_displays_data(
-    data: &[u8],
-) -> SystemProfilerResult<HashMap<DisplayId, DisplayInfo>> {
-    let root: Value = serde_json::from_slice(data)?;
+fn parse_displays_data(data: &[u8]) -> Result<HashMap<DisplayId, DisplayInfo>> {
+    let root: Value = serde_json::from_slice(data)
+        .map_err(|error| Error::Native(error.to_string()))?;
     Ok(parse_displays_value(&root))
 }
 
 /// Get the output of `system_profiler` for the `SPDisplaysDataType`.
-fn get_sp_displays_data() -> SystemProfilerResult<Vec<u8>> {
+fn get_sp_displays_data() -> Result<Vec<u8>> {
     let output = Command::new("/usr/sbin/system_profiler")
         .args(["-json", "SPDisplaysDataType"])
-        .output()?;
+        .output()
+        .map_err(|error| Error::Native(error.to_string()))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(SystemProfilerError::CmdFailed(stderr.into()));
+        return Err(Error::Native(format!(
+            "system_profiler failed with output: {stderr}"
+        )));
     }
 
     Ok(output.stdout)
