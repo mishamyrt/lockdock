@@ -13,7 +13,6 @@ pub use daemon::run;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub socket_path: PathBuf,
-    pub pid_path: PathBuf,
     pub verbose: bool,
 }
 

@@ -1,6 +1,4 @@
-use std::fs;
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
@@ -50,27 +48,6 @@ impl PollState {
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
-struct PidFile {
-    path: PathBuf,
-}
-
-impl PidFile {
-    fn create(path: &Path) -> Result<Self> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        fs::write(path, format!("{}\n", std::process::id()))?;
-        Ok(Self { path: path.to_owned() })
-    }
-}
-
-impl Drop for PidFile {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
-}
-
 extern "C" fn handle_termination_signal(_signal: libc::c_int) {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
 }
@@ -88,7 +65,6 @@ pub fn run(config: &Config) -> Result<()> {
     SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
     install_termination_handler();
     let listener = Server::bind(&config.socket_path)?;
-    let _pid_file = PidFile::create(&config.pid_path)?;
     let preferences = DisplayPreferences::new()?;
     let mut snapshot = DisplaySnapshot::load()?;
     let (sender, receiver) = mpsc::channel();

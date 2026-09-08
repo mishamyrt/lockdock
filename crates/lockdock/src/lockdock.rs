@@ -63,7 +63,6 @@ impl Lockdock {
     pub(crate) fn run(&self) -> Result<Output> {
         let config = lockdock_daemon::Config {
             socket_path: self.socket_path(),
-            pid_path: self.pid_path(),
             verbose: self.verbose,
         };
         lockdock_daemon::run(&config)?;
@@ -166,10 +165,6 @@ impl Lockdock {
 
     fn client(&self) -> Client {
         Client::new(self.socket_path())
-    }
-
-    fn pid_path(&self) -> PathBuf {
-        self.cache_dir.join("daemon.pid")
     }
 
     fn socket_path(&self) -> PathBuf {
