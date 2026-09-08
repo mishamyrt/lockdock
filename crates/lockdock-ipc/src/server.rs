@@ -1,8 +1,7 @@
 use std::{
     ffi::OsString,
-    fs::{self, File, OpenOptions},
+    fs::{self, File, OpenOptions, TryLockError},
     io::{self, Write as _},
-    os::fd::AsRawFd as _,
     os::unix::fs::FileTypeExt as _,
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
@@ -65,17 +64,10 @@ fn lock_socket(socket_path: &Path) -> Result<File> {
         .write(true)
         .open(PathBuf::from(lock_path))?;
 
-    let status =
-        unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    if status == 0 {
-        return Ok(lock_file);
-    }
-
-    let error = io::Error::last_os_error();
-    if error.kind() == io::ErrorKind::WouldBlock {
-        Err(Error::SocketInUse)
-    } else {
-        Err(error.into())
+    match lock_file.try_lock() {
+        Ok(()) => Ok(lock_file),
+        Err(TryLockError::WouldBlock) => Err(Error::SocketInUse),
+        Err(TryLockError::Error(error)) => Err(error.into()),
     }
 }
 

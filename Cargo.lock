@@ -259,7 +259,6 @@ version = "0.0.0"
 name = "lockdock-ipc"
 version = "0.0.0"
 dependencies = [
- "libc",
  "serde",
  "serde_json",
  "thiserror",
