@@ -87,7 +87,7 @@ fn parse_display_value(value: &Value) -> Option<(DisplayId, DisplayInfo)> {
 /// Parse a display ID from a `system_profiler` value.
 fn parse_display_id_value(value: &Value) -> Option<DisplayId> {
     if let Some(text) = value.as_str() {
-        return u32::from_str_radix(text.trim_start_matches("0x"), 16)
+        return DisplayId::from_str_radix(text.trim_start_matches("0x"), 16)
             .ok()
             .filter(|id| *id != 0);
     }
