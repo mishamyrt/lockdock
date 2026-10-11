@@ -21,7 +21,7 @@ const DISPLAY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const DISPLAY_INFO_RETRY_INTERVAL: Duration = Duration::from_secs(15);
 /// How long to wait after a failed reconcile before the poll loop tries to
 /// move the Dock again, so retries do not keep grabbing the cursor.
-const RECONCILE_RETRY_COOLDOWN: Duration = Duration::from_secs(15);
+const RECONCILE_RETRY_COOLDOWN: Duration = Duration::from_secs(5);
 
 #[derive(Default)]
 struct PollState {
