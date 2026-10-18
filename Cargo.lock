@@ -245,6 +245,7 @@ name = "lockdock-display"
 version = "0.0.0"
 dependencies = [
  "cc",
+ "libc",
  "lockdock-geometry",
  "prefs",
  "serde_json",

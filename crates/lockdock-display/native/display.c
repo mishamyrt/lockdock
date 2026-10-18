@@ -3,10 +3,8 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
-#include <libproc.h>
 #include <limits.h>
 #include <stdatomic.h>
-#include <string.h>
 
 // Maybe 16 is enough, but we'll be safe.
 #define LOCKDOCK_DISPLAY_MAX_WINDOWS 256
@@ -62,20 +60,13 @@ static bool lockdock_display_owner_is_dock(CFDictionaryRef window) {
     CFNumberRef pid_number =
         (CFNumberRef)CFDictionaryGetValue(window, kCGWindowOwnerPID);
     int pid = 0;
-    char executable[PROC_PIDPATHINFO_MAXSIZE];
 
     if (pid_number == NULL || CFGetTypeID(pid_number) != CFNumberGetTypeID() ||
         !CFNumberGetValue(pid_number, kCFNumberIntType, &pid) || pid <= 0) {
         return false;
     }
 
-    // Window owner names are localized. Identify the system Dock by its
-    // executable instead, and recheck the path because PIDs can be reused.
-    return proc_pidpath(pid, executable, sizeof(executable)) > 0 &&
-           strcmp(
-               executable,
-               "/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock"
-           ) == 0;
+    return lockdock_display_process_is_dock(pid);
 }
 
 static bool lockdock_display_window_is_wallpaper(CFDictionaryRef window) {
@@ -456,22 +447,3 @@ bool lockdock_display_dock_overlay_active(uint32_t display_id) {
     CFRelease(windows);
     return active;
 }
-
-// The test build substitutes the process resolver and exposes only these
-// predicates to Rust. Neither entry point is compiled into the production object.
-#ifdef LOCKDOCK_DISPLAY_TEST
-bool lockdock_display_test_owner_is_dock(CFDictionaryRef window) {
-    return lockdock_display_owner_is_dock(window);
-}
-
-bool lockdock_display_test_dock_bar_window(CFDictionaryRef window, int dock_level) {
-    CGRect bounds = CGRectZero;
-    CGWindowID window_id = kCGNullWindowID;
-    return lockdock_display_copy_dock_bar_window(
-        window,
-        dock_level,
-        &bounds,
-        &window_id
-    );
-}
-#endif

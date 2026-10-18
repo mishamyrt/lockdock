@@ -25,4 +25,6 @@ bool lockdock_display_copy_accessibility_dock_window_bounds(
 );
 bool lockdock_display_dock_overlay_active(uint32_t display_id);
 
+extern bool lockdock_display_process_is_dock(int pid);
+
 #endif

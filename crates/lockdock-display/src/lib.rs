@@ -1,5 +1,6 @@
 mod displays;
 mod dock;
+mod dock_process;
 mod ffi;
 mod system_profiler;
 
