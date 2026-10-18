@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1](https://github.com/mishamyrt/lockdock/compare/v0.5.0..v0.5.1) - 2026-10-18
+
+### 🚀 Features
+
+- Reduce reconcile cooldown
+
+### 🐛 Bug Fixes
+
+- Stop ipc thread on shutdown
+- Keep display polling on schedule
+- Refresh current dock position
+- Delegate service control to homebrew
+- Query cached dock window by id
+- Retry display metadata loading
+- Detect Dock independently of localized owner names
+
+### 🚜 Refactor
+
+- Simplify mouse event handling
+- Remove unused pid file
+- Configure mouse source on creation
+- Simplify mouse error buffer
+- Simplify display metadata errors
+- Remove redundant lock helpers
+- Reuse mouse event posting
+- Remove unused warning log
+- Use standard file locking
+
+### 📚 Documentation
+
+- Add security guide
+
 ## [0.5.0](https://github.com/mishamyrt/lockdock/compare/v0.4.2..v0.5.0) - 2026-08-25
 
 ### 🚀 Features
